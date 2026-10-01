@@ -14,9 +14,16 @@ const fn=new Function('URL',src+`
  // user's example: total 20,00,000; payments 50k,1.2L,30k,75k
  const a301=db.construction_plans[0]; const pc0=Calc.plan(db,a301);
  ok(pc0.total===2000000&&pc0.paid===275000&&pc0.due===1725000&&pc0.pctExact===13.8||pc0.pctExact===13.75,'A-301 example: total 20,00,000 paid 2,75,000 due 17,25,000 pct '+pc0.pctExact);
- // new unit -> plan -> flexible payments
- const un=await S.saveUnit(null,{code:'C-101',floor:'1',size_sqft:'1300',status:'Assigned',shareholder_id:'sh_0011',assigned_date:TODAY,remarks:''},'u1');
- db=repo.snapshot(); const unit=db.units.filter(u=>u.code==='C-101')[0];
+ // building structure
+ { const us=db.units; ok(us.length===36,'36 units: '+us.length); ok(us.every(u=>u.size_sqft===1440),'all 1440 sq ft'); ok(us.every(u=>u.floor>=4&&u.floor<=12),'units only on floors 4-12'); ok([4,5,6,7,8,9,10,11,12].every(f=>us.filter(u=>u.floor===f).length===4),'4 units per floor'); ok(new Set(us.map(u=>u.code)).size===36,'unique codes'); ok(us.every(u=>u.code===u.floor+u.unit_no),'codes follow floor+letter');
+  for(const bad of [{code:'2A',floor:'2'},{code:'13A',floor:'13'},{code:'0B',floor:'0'},{code:'A-301',floor:'3'},{code:'4A',floor:'4'}]){ try{await S.saveUnit(null,Object.assign({size_sqft:'1440',status:'Available',shareholder_id:'',remarks:''},bad),'bad'+bad.code);ok(false,'created '+bad.code)}catch(e){ok(e.code==='VALIDATION','blocked creating unit '+bad.code)} }
+  try{await S.saveUnit(null,{code:'5A',floor:'5',size_sqft:'1200',status:'Available',shareholder_id:'',remarks:''},'sz');ok(false,'size')}catch(e){ok(e.code==='VALIDATION','wrong size/duplicate blocked')} }
+ { const d0=repo.snapshot(); const ps=d0.construction_plans.slice(0,9); ok(ps.length>=9&&ps.every(p=>{const u=Calc.byId(d0.units,p.unit_id);return u&&u.shareholder_id===p.shareholder_id&&/^(4|5|6|7|8|9|10|11|12)[A-D]$/.test(u.code)}),'seed construction plans still match their unit + shareholder: '+ps.map(p=>Calc.byId(d0.units,p.unit_id).code).join(','));
+  ok(d0.construction_payments.every(p=>Calc.byId(d0.construction_plans,p.plan_id).unit_id===p.unit_id),'construction payments still point at the right unit'); }
+ // plan -> flexible payments
+ db=repo.snapshot(); const unit=db.units.filter(u=>u.status==='Available')[0];
+ await S.saveUnit(unit.id,{code:unit.code,floor:String(unit.floor),size_sqft:'1440',status:'Assigned',shareholder_id:'sh_0011',assigned_date:TODAY,remarks:''},'u1');
+ db=repo.snapshot();
  const planId=await S.createPlan({unit_id:unit.id,total_amount:'2000000'},'p1');
  for (const [i,amt] of [50000,120000,30000,75000].entries()) await S.addConstructionPayment({plan_id:planId,amount:amt,payment_date:TODAY,method:i%2?'bKash':'Cash',reference:i%2?'BK'+i:''},'cp'+i);
  const plan=Calc.byId(db.construction_plans,planId), pc=Calc.plan(db,plan);

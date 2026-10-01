@@ -59,14 +59,13 @@ function createSeed() {
   const shId = function (n) { return id('sh', n); };
 
   /* ---- units ---- */
-  const U = [
-    ['A-101', 1, 1450, 'Handed Over', 9, -3], ['A-201', 2, 1450, 'Under Construction', 2, -7], ['A-301', 3, 1450, 'Under Construction', 1, -8], ['A-401', 4, 1450, 'Under Construction', 4, -6],
-    ['A-501', 5, 1450, 'Assigned', 5, -5], ['A-601', 6, 1450, 'Assigned', 8, -4], ['B-102', 1, 1250, 'Available', 0, 0], ['B-202', 2, 1250, 'Assigned', 6, -5],
-    ['B-302', 3, 1250, 'Under Construction', 3, -6], ['B-402', 4, 1250, 'Reserved', 7, -3], ['B-502', 5, 1250, 'Under Construction', 1, -6], ['B-602', 6, 1250, 'Available', 0, 0]
-  ];
+  /* 36 fixed residential units: floors 4-12, A-D, 1,440 sq ft. Some carry sample assignments. */
+  const ASSIGN = { '4A': ['Handed Over', 9, -3], '5A': ['Under Construction', 2, -7], '6A': ['Under Construction', 1, -8], '7A': ['Under Construction', 4, -6], '8A': ['Assigned', 5, -5], '9A': ['Assigned', 8, -4],
+    '5B': ['Assigned', 6, -5], '6B': ['Under Construction', 3, -6], '7B': ['Reserved', 7, -3], '8B': ['Under Construction', 1, -6] };
+  const U = VALID_UNIT_CODES.map(function (c) { const a = ASSIGN[c]; return [c, parseInt(c, 10), UNIT_SIZE_SQFT, a ? a[0] : 'Available', a ? a[1] : 0, a ? a[2] : 0]; });
   U.forEach(function (u, i) {
     T.units.push(Object.assign({
-      id: id('unit', i + 1), code: u[0], floor: u[1], unit_no: u[0].split('-')[1], size_sqft: u[2], status: u[3], shareholder_id: u[4] ? shId(u[4]) : null,
+      id: id('unit', i + 1), code: u[0], floor: u[1], unit_no: u[0].slice(-1), size_sqft: u[2], status: u[3], shareholder_id: u[4] ? shId(u[4]) : null,
       assigned_date: u[4] ? monthDate(u[5], 12) : null, remarks: u[3] === 'Reserved' ? 'Reserved against pending share payment.' : ''
     }, D));
   });
@@ -112,15 +111,15 @@ function createSeed() {
      One total per unit. The customer pays any amount on any date; there is no installment schedule. */
   let cpN = 0;
   const PL = [
-    ['A-301', 1, 2000000, -8, [[50000, -6, 12, 'Cash'], [120000, -5, 3, 'bKash'], [30000, -4, 20, 'Cash'], [75000, -2, 9, 'Bank Transfer']]],
-    ['B-502', 1, 2600000, -6, [[300000, -5, 10, 'Bank Transfer'], [45000, -3, 22, 'Cash'], [155000, -1, 6, 'Cheque']]],
-    ['A-201', 2, 2800000, -7, [[500000, -6, 8, 'Cheque'], [250000, -4, 14, 'Bank Transfer'], [60000, -2, 25, 'bKash'], [90000, -1, 11, 'Cash']]],
-    ['B-302', 3, 2400000, -6, [[200000, -5, 15, 'Bank Transfer'], [35000, -3, 4, 'Cash']]],
-    ['A-401', 4, 3000000, -6, [[750000, -5, 18, 'Cheque'], [400000, -3, 2, 'Bank Transfer'], [125000, -1, 20, 'bKash']]],
-    ['A-501', 5, 2700000, -5, [[100000, -4, 7, 'Cash']]],
-    ['B-202', 6, 2200000, -5, []],
-    ['A-601', 8, 3200000, -4, [[600000, -3, 12, 'Bank Transfer'], [80000, -2, 5, 'Cash'], [220000, -1, 19, 'Cheque']]],
-    ['A-101', 9, 2500000, -9, [[1000000, -8, 10, 'Bank Transfer'], [500000, -6, 16, 'Cheque'], [350000, -5, 2, 'Bank Transfer'], [400000, -3, 14, 'Bank Transfer'], [250000, -2, 8, 'Cheque']]]
+    ['6A', 1, 2000000, -8, [[50000, -6, 12, 'Cash'], [120000, -5, 3, 'bKash'], [30000, -4, 20, 'Cash'], [75000, -2, 9, 'Bank Transfer']]],
+    ['8B', 1, 2600000, -6, [[300000, -5, 10, 'Bank Transfer'], [45000, -3, 22, 'Cash'], [155000, -1, 6, 'Cheque']]],
+    ['5A', 2, 2800000, -7, [[500000, -6, 8, 'Cheque'], [250000, -4, 14, 'Bank Transfer'], [60000, -2, 25, 'bKash'], [90000, -1, 11, 'Cash']]],
+    ['6B', 3, 2400000, -6, [[200000, -5, 15, 'Bank Transfer'], [35000, -3, 4, 'Cash']]],
+    ['7A', 4, 3000000, -6, [[750000, -5, 18, 'Cheque'], [400000, -3, 2, 'Bank Transfer'], [125000, -1, 20, 'bKash']]],
+    ['8A', 5, 2700000, -5, [[100000, -4, 7, 'Cash']]],
+    ['5B', 6, 2200000, -5, []],
+    ['9A', 8, 3200000, -4, [[600000, -3, 12, 'Bank Transfer'], [80000, -2, 5, 'Cash'], [220000, -1, 19, 'Cheque']]],
+    ['4A', 9, 2500000, -9, [[1000000, -8, 10, 'Bank Transfer'], [500000, -6, 16, 'Cheque'], [350000, -5, 2, 'Bank Transfer'], [400000, -3, 14, 'Bank Transfer'], [250000, -2, 8, 'Cheque']]]
   ];
   PL.forEach(function (p, i) {
     const n = i + 1, planId = id('cplan', n), uId = unitId(p[0]);

@@ -2,7 +2,7 @@
    06 UI KIT — reusable presentational components + hooks.
    Nothing here knows about storage; pages get data via useApp().
    ============================================================ */
-const { useState, useEffect, useMemo, useRef, useCallback, useContext, createContext, Fragment, useId } = React;
+const { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useContext, createContext, Fragment, useId } = React;
 const AppCtx = createContext(null);
 const useApp = () => useContext(AppCtx);
 

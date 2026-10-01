@@ -229,14 +229,13 @@ function BookingForm({ shareholderId, onClose }) {
 /* ---------- unit ---------- */
 function UnitForm({ unit, onClose }) {
   const { db, S, run } = useApp(); const reqId = useRequestId();
-  const [f, set] = useForm({ code: unit ? unit.code : '', floor: unit ? String(unit.floor) : '', size_sqft: unit ? String(unit.size_sqft) : '', status: unit ? unit.status : 'Available', shareholder_id: unit && unit.shareholder_id ? unit.shareholder_id : '', assigned_date: unit && unit.assigned_date ? unit.assigned_date : TODAY, remarks: unit ? unit.remarks : '' });
+  const [f, set] = useForm({ code: unit.code, floor: String(unit.floor), size_sqft: String(unit.size_sqft), status: unit.status, shareholder_id: unit.shareholder_id || '', assigned_date: unit.assigned_date || TODAY, remarks: unit.remarks || '' });
   const [errs, setErrs] = useState({}); const [busy, setBusy] = useState(false);
-  const submit = async () => { const e = V.unit(f, { db: db, id: unit && unit.id }); setErrs(e); if (V.hasErrors(e)) return; setBusy(true); const r = await run(() => S.saveUnit(unit && unit.id, f, reqId), unit ? 'Unit updated' : 'Unit added'); setBusy(false); if (r.ok) onClose(); };
-  return (<Modal title={unit ? 'Edit unit ' + unit.code : 'Add unit'} sub="A shareholder can hold several units. Assign the same shareholder to each." onClose={onClose} footer={<ModalFooter onClose={onClose} busy={busy} onSubmit={submit} label={unit ? 'Save changes' : 'Add unit'} />}>
+  const submit = async () => { const e = V.unit(f, { db: db, id: unit.id }); setErrs(e); if (V.hasErrors(e)) return; setBusy(true); const r = await run(() => S.saveUnit(unit.id, f, reqId), 'Unit updated'); setBusy(false); if (r.ok) onClose(); };
+  return (<Modal title={'Unit ' + unit.code} sub={floorName(unit.floor) + ' · Residential · ' + unit.size_sqft.toLocaleString('en-US') + ' sq ft'} onClose={onClose} footer={<ModalFooter onClose={onClose} busy={busy} onSubmit={submit} label="Save changes" />}>
+    <Note>The building plan is fixed: 36 residential units on floors 4 to 12. Unit label, floor and size cannot be changed here. A shareholder can hold several units.</Note>
+    {errs.code && <span className="err">{errs.code}</span>}
     <div className="frm">
-      <Field label="Unit label" req err={errs.code} hint="Example: A-301"><Txt value={f.code} onChange={set('code')} /></Field>
-      <Field label="Floor" req err={errs.floor}><input className="inp" type="number" min="0" value={f.floor} onChange={(e) => set('floor')(e.target.value)} /></Field>
-      <Field label="Size (sq ft)" req err={errs.size_sqft}><input className="inp" type="number" min="1" value={f.size_sqft} onChange={(e) => set('size_sqft')(e.target.value)} /></Field>
       <Field label="Status" err={errs.status}><Sel value={f.status} onChange={set('status')} options={UNIT_STATUSES} /></Field>
       <Field label="Assigned shareholder" err={errs.shareholder_id}><Sel value={f.shareholder_id} onChange={set('shareholder_id')} options={db.shareholders.filter(live).map((s) => ({ value: s.id, label: s.code + ' · ' + s.full_name }))} placeholder="Not assigned" /></Field>
       <Field label="Assignment date"><DateIn value={f.assigned_date} onChange={set('assigned_date')} disabled={!f.shareholder_id} /></Field>

@@ -158,10 +158,12 @@ const V = {
   },
   unit: function (f, ctx) {
     const e = {};
-    if (!String(f.code || '').trim()) e.code = 'Enter the unit label, e.g. A-301.';
+    const cd = String(f.code || '').trim().toUpperCase();
+    if (!cd) e.code = 'Enter the unit label, e.g. 7B.';
+    else if (VALID_UNIT_CODES.indexOf(cd) < 0) e.code = 'Residential units exist only on floors 4 to 12 (labels 4A to 12D). Ground to 3rd floor are commercial and the roof is not a unit floor.';
     else if (ctx.db.units.some(function (u) { return u.id !== ctx.id && u.code.toLowerCase() === f.code.trim().toLowerCase() && live(u); })) e.code = 'A unit with this label already exists.';
-    if (!f.floor || isNaN(Number(f.floor)) || Number(f.floor) < 0) e.floor = 'Enter the floor number.';
-    if (!f.size_sqft || Number(f.size_sqft) <= 0) e.size_sqft = 'Enter the size in sq ft.';
+    if (!e.code && Number(f.floor) !== parseInt(cd, 10)) e.floor = 'The floor must match the unit label (' + parseInt(cd, 10) + ').'; else if (RES_FLOORS.indexOf(Number(f.floor)) < 0) e.floor = 'Only floors 4 to 12 can hold residential units.';
+    if (Number(f.size_sqft) !== UNIT_SIZE_SQFT) e.size_sqft = 'Every residential unit is ' + UNIT_SIZE_SQFT.toLocaleString('en-US') + ' sq ft.';
     if (f.status === 'Available' && f.shareholder_id) e.status = 'An assigned unit cannot be Available. Choose Assigned or clear the shareholder.';
     if (f.status !== 'Available' && !f.shareholder_id) e.shareholder_id = 'Assign a shareholder for this status.';
     return e;

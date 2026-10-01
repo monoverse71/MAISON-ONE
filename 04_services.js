@@ -166,7 +166,7 @@ function createServices(ctx) {
   /* ---------- units ---------- */
   S.saveUnit = async function (id, f, requestId) {
     guard('write'); const db = getDb(); need(V.unit(f, { db: db, id: id }));
-    const row = { code: f.code.trim().toUpperCase(), floor: Number(f.floor), unit_no: f.code.trim().toUpperCase().split('-').pop(), size_sqft: Number(f.size_sqft), status: f.status, shareholder_id: f.shareholder_id || null, assigned_date: f.shareholder_id ? (f.assigned_date || TODAY) : null, remarks: f.remarks || '' };
+    const row = { code: f.code.trim().toUpperCase(), floor: Number(f.floor), unit_no: f.code.trim().toUpperCase().slice(-1), size_sqft: Number(f.size_sqft), status: f.status, shareholder_id: f.shareholder_id || null, assigned_date: f.shareholder_id ? (f.assigned_date || TODAY) : null, remarks: f.remarks || '' };
     if (!id) {
       const uidn = uid('unit'); await commit([ins('units', Object.assign({ id: uidn }, row)), audit('Created unit', 'unit', uidn, 'Created unit ' + row.code + ' (' + row.size_sqft + ' sq ft)', { shareholder_id: row.shareholder_id })], requestId); return row;
     }

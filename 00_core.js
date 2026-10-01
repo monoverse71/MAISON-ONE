@@ -16,6 +16,14 @@ const APP_CONFIG = {
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const METHODS = ['Bank Transfer','bKash','Cash','Cheque'];
 const EXPENSE_CATEGORIES = ['Contractor Payment','Materials','Labor','Electrical','Plumbing','Structural','Tiles','Cement','Steel','Lift','Generator','Interior','Engineering','Government / Approval','Transportation','Other'];
+/* Fixed building plan. Only floors 4 to 12 hold residential units (4 per floor, 1,440 sq ft each = 36 units). */
+const UNIT_SIZE_SQFT = 1440, UNIT_LETTERS = ['A', 'B', 'C', 'D'], RES_FLOORS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+const ORD = function (n) { return n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th'); };
+const BUILDING = [0, 1, 2, 3].map(function (f) { return { floor: f, label: f === 0 ? 'Ground' : ORD(f), use: 'Commercial', units: 0 }; })
+  .concat(RES_FLOORS.map(function (f) { return { floor: f, label: ORD(f), use: 'Residential', units: 4 }; }))
+  .concat([{ floor: 13, label: 'Roof Top', use: 'Roof / Amenities', units: 0 }]);
+const VALID_UNIT_CODES = RES_FLOORS.reduce(function (a, f) { return a.concat(UNIT_LETTERS.map(function (l) { return f + l; })); }, []);
+function floorName(f) { const b = BUILDING.filter(function (x) { return x.floor === Number(f); })[0]; return b ? (f === 0 ? 'Ground Floor' : b.floor === 13 ? 'Roof Top' : b.label + ' Floor') : String(f); }
 const UNIT_STATUSES = ['Available','Reserved','Assigned','Under Construction','Completed','Handed Over'];
 const DOC_TYPES = ['NID','Photo','Share Agreement','Deed','Booking Document','Payment Receipt','Construction Agreement','Bill / Invoice','Other'];
 

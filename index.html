@@ -297,13 +297,13 @@ textarea.inp{min-height:68px;resize:vertical}
 .pv-note{background:var(--warn-bg);color:var(--warn);padding:10px 16px;font-size:13px}
 .pv-scroll{flex:1;min-height:0;overflow:auto;padding:16px}
 .paper-outer{margin:0 auto}
-.paper{background:#fff;color:#1F2937;box-shadow:0 4px 24px rgba(0,0,0,.35);min-height:1123px}
-.paper.land{min-height:794px}
-#print-root{display:none}
+.paper{background:#fff;color:#1F2937;box-shadow:0 4px 24px rgba(0,0,0,.35)}
+#print-root{position:absolute;left:-12000px;top:0;display:block;pointer-events:none}
 
 /* ---------- documents (fixed light palette: paper is always white) ---------- */
 .doc,.print-copy{--ink:#1F2937;--ink-2:#374151;--ink-3:#6B7280;--line:#D1D5DB;--primary:#6B21A8;font-family:'IBM Plex Sans','Noto Sans Bengali','Noto Sans',system-ui,sans-serif;color:#1F2937;font-size:10pt;line-height:1.4}
-.doc{padding:14mm 13mm 16mm;display:flex;flex-direction:column;gap:10px;min-height:inherit;background:#fff}
+.doc{width:210mm;height:296.5mm;padding:11mm 12mm 10mm;display:flex;flex-direction:column;gap:8px;background:#fff;overflow:hidden;box-sizing:border-box;break-after:avoid;break-inside:avoid}
+.doc.land{width:297mm;height:209.5mm;padding:9mm 11mm 8mm}
 .doc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:10px;border-bottom:2.5px solid #6B21A8}
 .doc-brand{display:flex;gap:10px;align-items:center}
 .doc-mark{width:38px;height:38px;border-radius:8px;background:#6B21A8;color:#fff;display:grid;place-items:center;font-weight:600;font-size:14pt;font-family:'Newsreader',Georgia,serif}
@@ -311,8 +311,9 @@ textarea.inp{min-height:68px;resize:vertical}
 .doc-proj{font-size:9.5pt;color:#4B5563}
 .doc-id{text-align:right;font-size:9pt;color:#4B5563}
 .doc-title{font-family:'Newsreader',Georgia,serif;font-size:15pt;font-weight:600;color:#1F2937;text-transform:uppercase;letter-spacing:.03em}
-.doc-body{display:flex;flex-direction:column;gap:11px;flex:1;position:relative}
-.doc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;border-top:1px solid #D1D5DB;padding-top:6px;font-size:8pt;color:#6B7280;margin-top:auto}
+.doc-body{flex:1;min-height:0;position:relative;overflow:hidden}
+.doc-fit{display:flex;flex-direction:column;gap:11px}
+.doc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;border-top:1px solid #D1D5DB;padding-top:6px;font-size:8pt;color:#6B7280;flex:none}
 .doc .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace}
 .dsec{break-inside:avoid-page}
 .dsec h3{font-size:8.5pt;text-transform:uppercase;letter-spacing:.07em;color:#5B21B6;margin:0 0 5px;padding-bottom:3px;border-bottom:1px solid #E5E7EB;font-weight:600}
@@ -349,22 +350,32 @@ textarea.inp{min-height:68px;resize:vertical}
 .prof-top .dimg{width:30mm}.prof-top .dimg img,.prof-top .dimg-none{aspect-ratio:3/4}
 .dimg-row{display:flex;gap:10px;flex-wrap:wrap}.dimg-row .dimg{width:40mm}
 
-/* ---------- print ---------- */
+/* ---------- print: every document is exactly one A4 sheet ---------- */
 @page{size:A4 portrait;margin:0}
 @page land{size:A4 landscape;margin:0}
 @media print{
-  html,body{background:#fff!important;height:auto!important;overflow:visible!important}
+  html,body{background:#fff!important;height:auto!important;overflow:visible!important;margin:0!important;padding:0!important}
   body>*:not(#print-root){display:none!important}
   #root,.toasts,.ov,.lb,.pv{display:none!important}
-  #print-root{display:block!important}
-  .print-copy{display:block;width:100%}
-  .print-copy .doc{padding:12mm 12mm 14mm;min-height:0;gap:9px;box-shadow:none}
+  #print-root{position:static!important;left:auto!important;display:block!important}
+  .print-copy{display:block;width:auto}
   .print-copy .doc.land{page:land}
-  .print-copy .doc-body{flex:none}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .dsec h3,.dt th{break-after:avoid}
-  .dt{break-inside:auto}
 }
+/* ---------- building structure (Units page) ---------- */
+.bldg{display:grid;gap:10px}
+.bfloor{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px 14px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+.bfloor.non{background:var(--surface-2)}
+.bfloor-h{display:grid;gap:2px}.bfloor-h b{font-size:15px}.bfloor-h span{font-size:12px;color:var(--ink-3)}
+.bfloor.res .bfloor-h b{color:var(--primary-text)}
+.bunits{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.bnone{color:var(--ink-3);font-size:13px;align-self:center}
+.ucard{display:grid;gap:3px;text-align:left;padding:9px 10px;border-radius:7px;border:1px solid var(--line-2);background:var(--surface);min-width:0}
+.ucard:hover{border-color:var(--primary)}
+.uc-top{display:flex;justify-content:space-between;align-items:center;gap:6px}.uc-top b{font-size:15px}
+.uc-size{font-size:12px;color:var(--ink-2)}.uc-who{font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.uc-pay{font-size:11.5px;color:var(--ink-3)}
+.ucard.s-Available{border-style:dashed}.ucard.s-Reserved{background:var(--warn-bg)}.ucard.s-Assigned{background:var(--info-bg)}.ucard.s-Under{background:var(--primary-soft)}.ucard.s-Completed{background:var(--ok-bg)}.ucard.s-Handed{background:var(--mute-bg)}
+@media (max-width:900px){.bunits{grid-template-columns:repeat(2,minmax(0,1fr))}.bfloor{grid-template-columns:minmax(0,1fr)}}
 
 </style>
 <div id="root"></div>
@@ -384,6 +395,26 @@ textarea.inp{min-height:68px;resize:vertical}
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const METHODS = ["Bank Transfer", "bKash", "Cash", "Cheque"];
   const EXPENSE_CATEGORIES = ["Contractor Payment", "Materials", "Labor", "Electrical", "Plumbing", "Structural", "Tiles", "Cement", "Steel", "Lift", "Generator", "Interior", "Engineering", "Government / Approval", "Transportation", "Other"];
+  const UNIT_SIZE_SQFT = 1440, UNIT_LETTERS = ["A", "B", "C", "D"], RES_FLOORS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const ORD = function(n) {
+    return n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
+  };
+  const BUILDING = [0, 1, 2, 3].map(function(f) {
+    return { floor: f, label: f === 0 ? "Ground" : ORD(f), use: "Commercial", units: 0 };
+  }).concat(RES_FLOORS.map(function(f) {
+    return { floor: f, label: ORD(f), use: "Residential", units: 4 };
+  })).concat([{ floor: 13, label: "Roof Top", use: "Roof / Amenities", units: 0 }]);
+  const VALID_UNIT_CODES = RES_FLOORS.reduce(function(a, f) {
+    return a.concat(UNIT_LETTERS.map(function(l) {
+      return f + l;
+    }));
+  }, []);
+  function floorName(f) {
+    const b = BUILDING.filter(function(x) {
+      return x.floor === Number(f);
+    })[0];
+    return b ? f === 0 ? "Ground Floor" : b.floor === 13 ? "Roof Top" : b.label + " Floor" : String(f);
+  }
   const UNIT_STATUSES = ["Available", "Reserved", "Assigned", "Under Construction", "Completed", "Handed Over"];
   const DOC_TYPES = ["NID", "Photo", "Share Agreement", "Deed", "Booking Document", "Payment Receipt", "Construction Agreement", "Bill / Invoice", "Other"];
   function pad(n, w) {
@@ -611,26 +642,28 @@ textarea.inp{min-height:68px;resize:vertical}
     const shId = function(n) {
       return id("sh", n);
     };
-    const U = [
-      ["A-101", 1, 1450, "Handed Over", 9, -3],
-      ["A-201", 2, 1450, "Under Construction", 2, -7],
-      ["A-301", 3, 1450, "Under Construction", 1, -8],
-      ["A-401", 4, 1450, "Under Construction", 4, -6],
-      ["A-501", 5, 1450, "Assigned", 5, -5],
-      ["A-601", 6, 1450, "Assigned", 8, -4],
-      ["B-102", 1, 1250, "Available", 0, 0],
-      ["B-202", 2, 1250, "Assigned", 6, -5],
-      ["B-302", 3, 1250, "Under Construction", 3, -6],
-      ["B-402", 4, 1250, "Reserved", 7, -3],
-      ["B-502", 5, 1250, "Under Construction", 1, -6],
-      ["B-602", 6, 1250, "Available", 0, 0]
-    ];
+    const ASSIGN = {
+      "4A": ["Handed Over", 9, -3],
+      "5A": ["Under Construction", 2, -7],
+      "6A": ["Under Construction", 1, -8],
+      "7A": ["Under Construction", 4, -6],
+      "8A": ["Assigned", 5, -5],
+      "9A": ["Assigned", 8, -4],
+      "5B": ["Assigned", 6, -5],
+      "6B": ["Under Construction", 3, -6],
+      "7B": ["Reserved", 7, -3],
+      "8B": ["Under Construction", 1, -6]
+    };
+    const U = VALID_UNIT_CODES.map(function(c) {
+      const a = ASSIGN[c];
+      return [c, parseInt(c, 10), UNIT_SIZE_SQFT, a ? a[0] : "Available", a ? a[1] : 0, a ? a[2] : 0];
+    });
     U.forEach(function(u, i) {
       T.units.push(Object.assign({
         id: id("unit", i + 1),
         code: u[0],
         floor: u[1],
-        unit_no: u[0].split("-")[1],
+        unit_no: u[0].slice(-1),
         size_sqft: u[2],
         status: u[3],
         shareholder_id: u[4] ? shId(u[4]) : null,
@@ -705,15 +738,15 @@ textarea.inp{min-height:68px;resize:vertical}
     });
     let cpN = 0;
     const PL = [
-      ["A-301", 1, 2e6, -8, [[5e4, -6, 12, "Cash"], [12e4, -5, 3, "bKash"], [3e4, -4, 20, "Cash"], [75e3, -2, 9, "Bank Transfer"]]],
-      ["B-502", 1, 26e5, -6, [[3e5, -5, 10, "Bank Transfer"], [45e3, -3, 22, "Cash"], [155e3, -1, 6, "Cheque"]]],
-      ["A-201", 2, 28e5, -7, [[5e5, -6, 8, "Cheque"], [25e4, -4, 14, "Bank Transfer"], [6e4, -2, 25, "bKash"], [9e4, -1, 11, "Cash"]]],
-      ["B-302", 3, 24e5, -6, [[2e5, -5, 15, "Bank Transfer"], [35e3, -3, 4, "Cash"]]],
-      ["A-401", 4, 3e6, -6, [[75e4, -5, 18, "Cheque"], [4e5, -3, 2, "Bank Transfer"], [125e3, -1, 20, "bKash"]]],
-      ["A-501", 5, 27e5, -5, [[1e5, -4, 7, "Cash"]]],
-      ["B-202", 6, 22e5, -5, []],
-      ["A-601", 8, 32e5, -4, [[6e5, -3, 12, "Bank Transfer"], [8e4, -2, 5, "Cash"], [22e4, -1, 19, "Cheque"]]],
-      ["A-101", 9, 25e5, -9, [[1e6, -8, 10, "Bank Transfer"], [5e5, -6, 16, "Cheque"], [35e4, -5, 2, "Bank Transfer"], [4e5, -3, 14, "Bank Transfer"], [25e4, -2, 8, "Cheque"]]]
+      ["6A", 1, 2e6, -8, [[5e4, -6, 12, "Cash"], [12e4, -5, 3, "bKash"], [3e4, -4, 20, "Cash"], [75e3, -2, 9, "Bank Transfer"]]],
+      ["8B", 1, 26e5, -6, [[3e5, -5, 10, "Bank Transfer"], [45e3, -3, 22, "Cash"], [155e3, -1, 6, "Cheque"]]],
+      ["5A", 2, 28e5, -7, [[5e5, -6, 8, "Cheque"], [25e4, -4, 14, "Bank Transfer"], [6e4, -2, 25, "bKash"], [9e4, -1, 11, "Cash"]]],
+      ["6B", 3, 24e5, -6, [[2e5, -5, 15, "Bank Transfer"], [35e3, -3, 4, "Cash"]]],
+      ["7A", 4, 3e6, -6, [[75e4, -5, 18, "Cheque"], [4e5, -3, 2, "Bank Transfer"], [125e3, -1, 20, "bKash"]]],
+      ["8A", 5, 27e5, -5, [[1e5, -4, 7, "Cash"]]],
+      ["5B", 6, 22e5, -5, []],
+      ["9A", 8, 32e5, -4, [[6e5, -3, 12, "Bank Transfer"], [8e4, -2, 5, "Cash"], [22e4, -1, 19, "Cheque"]]],
+      ["4A", 9, 25e5, -9, [[1e6, -8, 10, "Bank Transfer"], [5e5, -6, 16, "Cheque"], [35e4, -5, 2, "Bank Transfer"], [4e5, -3, 14, "Bank Transfer"], [25e4, -2, 8, "Cheque"]]]
     ];
     PL.forEach(function(p, i) {
       const n = i + 1, planId = id("cplan", n), uId = unitId(p[0]);
@@ -1320,12 +1353,15 @@ textarea.inp{min-height:68px;resize:vertical}
     },
     unit: function(f, ctx) {
       const e = {};
-      if (!String(f.code || "").trim()) e.code = "Enter the unit label, e.g. A-301.";
+      const cd = String(f.code || "").trim().toUpperCase();
+      if (!cd) e.code = "Enter the unit label, e.g. 7B.";
+      else if (VALID_UNIT_CODES.indexOf(cd) < 0) e.code = "Residential units exist only on floors 4 to 12 (labels 4A to 12D). Ground to 3rd floor are commercial and the roof is not a unit floor.";
       else if (ctx.db.units.some(function(u) {
         return u.id !== ctx.id && u.code.toLowerCase() === f.code.trim().toLowerCase() && live(u);
       })) e.code = "A unit with this label already exists.";
-      if (!f.floor || isNaN(Number(f.floor)) || Number(f.floor) < 0) e.floor = "Enter the floor number.";
-      if (!f.size_sqft || Number(f.size_sqft) <= 0) e.size_sqft = "Enter the size in sq ft.";
+      if (!e.code && Number(f.floor) !== parseInt(cd, 10)) e.floor = "The floor must match the unit label (" + parseInt(cd, 10) + ").";
+      else if (RES_FLOORS.indexOf(Number(f.floor)) < 0) e.floor = "Only floors 4 to 12 can hold residential units.";
+      if (Number(f.size_sqft) !== UNIT_SIZE_SQFT) e.size_sqft = "Every residential unit is " + UNIT_SIZE_SQFT.toLocaleString("en-US") + " sq ft.";
       if (f.status === "Available" && f.shareholder_id) e.status = "An assigned unit cannot be Available. Choose Assigned or clear the shareholder.";
       if (f.status !== "Available" && !f.shareholder_id) e.shareholder_id = "Assign a shareholder for this status.";
       return e;
@@ -1712,7 +1748,7 @@ textarea.inp{min-height:68px;resize:vertical}
       guard("write");
       const db = getDb();
       need(V.unit(f, { db, id }));
-      const row = { code: f.code.trim().toUpperCase(), floor: Number(f.floor), unit_no: f.code.trim().toUpperCase().split("-").pop(), size_sqft: Number(f.size_sqft), status: f.status, shareholder_id: f.shareholder_id || null, assigned_date: f.shareholder_id ? f.assigned_date || TODAY : null, remarks: f.remarks || "" };
+      const row = { code: f.code.trim().toUpperCase(), floor: Number(f.floor), unit_no: f.code.trim().toUpperCase().slice(-1), size_sqft: Number(f.size_sqft), status: f.status, shareholder_id: f.shareholder_id || null, assigned_date: f.shareholder_id ? f.assigned_date || TODAY : null, remarks: f.remarks || "" };
       if (!id) {
         const uidn = uid("unit");
         await commit([ins("units", Object.assign({ id: uidn }, row)), audit("Created unit", "unit", uidn, "Created unit " + row.code + " (" + row.size_sqft + " sq ft)", { shareholder_id: row.shareholder_id })], requestId);
@@ -2133,7 +2169,7 @@ textarea.inp{min-height:68px;resize:vertical}
       return { filename: report.file + "_" + stamp + ".pdf", mime: "application/pdf", body: meta.join("\n") + "\n\n" + Exporter.csv(report, result.rows, result.totals).replace(/,/g, "  |  "), note: "Preview of the report text. A server function will produce the branded PDF with letterhead and page numbers." };
     }
   };
-  const { useState, useEffect, useMemo, useRef, useCallback, useContext, createContext, Fragment, useId } = React;
+  const { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useContext, createContext, Fragment, useId } = React;
   const AppCtx = createContext(null);
   const useApp = () => useContext(AppCtx);
   const ICONS = {
@@ -2813,19 +2849,19 @@ textarea.inp{min-height:68px;resize:vertical}
   function UnitForm({ unit, onClose }) {
     const { db, S, run } = useApp();
     const reqId = useRequestId();
-    const [f, set] = useForm({ code: unit ? unit.code : "", floor: unit ? String(unit.floor) : "", size_sqft: unit ? String(unit.size_sqft) : "", status: unit ? unit.status : "Available", shareholder_id: unit && unit.shareholder_id ? unit.shareholder_id : "", assigned_date: unit && unit.assigned_date ? unit.assigned_date : TODAY, remarks: unit ? unit.remarks : "" });
+    const [f, set] = useForm({ code: unit.code, floor: String(unit.floor), size_sqft: String(unit.size_sqft), status: unit.status, shareholder_id: unit.shareholder_id || "", assigned_date: unit.assigned_date || TODAY, remarks: unit.remarks || "" });
     const [errs, setErrs] = useState({});
     const [busy, setBusy] = useState(false);
     const submit = async () => {
-      const e = V.unit(f, { db, id: unit && unit.id });
+      const e = V.unit(f, { db, id: unit.id });
       setErrs(e);
       if (V.hasErrors(e)) return;
       setBusy(true);
-      const r = await run(() => S.saveUnit(unit && unit.id, f, reqId), unit ? "Unit updated" : "Unit added");
+      const r = await run(() => S.saveUnit(unit.id, f, reqId), "Unit updated");
       setBusy(false);
       if (r.ok) onClose();
     };
-    return /* @__PURE__ */ React.createElement(Modal, { title: unit ? "Edit unit " + unit.code : "Add unit", sub: "A shareholder can hold several units. Assign the same shareholder to each.", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: unit ? "Save changes" : "Add unit" }) }, /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit label", req: true, err: errs.code, hint: "Example: A-301" }, /* @__PURE__ */ React.createElement(Txt, { value: f.code, onChange: set("code") })), /* @__PURE__ */ React.createElement(Field, { label: "Floor", req: true, err: errs.floor }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "0", value: f.floor, onChange: (e) => set("floor")(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "Size (sq ft)", req: true, err: errs.size_sqft }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "1", value: f.size_sqft, onChange: (e) => set("size_sqft")(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "Status", err: errs.status }, /* @__PURE__ */ React.createElement(Sel, { value: f.status, onChange: set("status"), options: UNIT_STATUSES })), /* @__PURE__ */ React.createElement(Field, { label: "Assigned shareholder", err: errs.shareholder_id }, /* @__PURE__ */ React.createElement(Sel, { value: f.shareholder_id, onChange: set("shareholder_id"), options: db.shareholders.filter(live).map((s) => ({ value: s.id, label: s.code + " · " + s.full_name })), placeholder: "Not assigned" })), /* @__PURE__ */ React.createElement(Field, { label: "Assignment date" }, /* @__PURE__ */ React.createElement(DateIn, { value: f.assigned_date, onChange: set("assigned_date"), disabled: !f.shareholder_id })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.remarks, onChange: set("remarks") }))));
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Unit " + unit.code, sub: floorName(unit.floor) + " · Residential · " + unit.size_sqft.toLocaleString("en-US") + " sq ft", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Save changes" }) }, /* @__PURE__ */ React.createElement(Note, null, "The building plan is fixed: 36 residential units on floors 4 to 12. Unit label, floor and size cannot be changed here. A shareholder can hold several units."), errs.code && /* @__PURE__ */ React.createElement("span", { className: "err" }, errs.code), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Status", err: errs.status }, /* @__PURE__ */ React.createElement(Sel, { value: f.status, onChange: set("status"), options: UNIT_STATUSES })), /* @__PURE__ */ React.createElement(Field, { label: "Assigned shareholder", err: errs.shareholder_id }, /* @__PURE__ */ React.createElement(Sel, { value: f.shareholder_id, onChange: set("shareholder_id"), options: db.shareholders.filter(live).map((s) => ({ value: s.id, label: s.code + " · " + s.full_name })), placeholder: "Not assigned" })), /* @__PURE__ */ React.createElement(Field, { label: "Assignment date" }, /* @__PURE__ */ React.createElement(DateIn, { value: f.assigned_date, onChange: set("assigned_date"), disabled: !f.shareholder_id })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.remarks, onChange: set("remarks") }))));
   }
   function PlanForm({ unitId, onClose, onSaved }) {
     const { db, S, run } = useApp();
@@ -3277,12 +3313,11 @@ textarea.inp{min-height:68px;resize:vertical}
       return Object.assign({ holder: u.shareholder_id ? shName(db, u.shareholder_id) : "", plan: plan || null, pc: plan ? Calc.plan(db, plan) : null }, u);
     }), [db]);
     const rows = all.filter((u) => (flt === "all" || u.status === flt) && (!q.trim() || (u.code + " " + u.holder).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
-    const floors = Array.from(new Set(all.map((u) => u.floor))).sort((a, b) => b - a);
     const opts = [{ id: "all", label: "All", count: all.length }].concat(UNIT_STATUSES.map((s) => ({ id: s, label: s, count: all.filter((u) => u.status === s).length })));
     const cols = [
       { key: "code", label: "Unit", render: (u) => /* @__PURE__ */ React.createElement("b", null, u.code) },
-      { key: "floor", label: "Floor", align: "r" },
-      { key: "size_sqft", label: "Size", align: "r", render: (u) => u.size_sqft + " sq ft" },
+      { key: "floor", label: "Floor", align: "r", render: (u) => ORD(u.floor) },
+      { key: "size_sqft", label: "Size", align: "r", render: (u) => u.size_sqft.toLocaleString("en-US") + " sq ft" },
       { key: "status", label: "Status", render: (u) => /* @__PURE__ */ React.createElement(Status, { v: u.status }) },
       { key: "holder", label: "Assigned shareholder", render: (u) => u.shareholder_id ? /* @__PURE__ */ React.createElement(ShLink, { id: u.shareholder_id }) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "Not assigned") },
       { key: "assigned_date", label: "Assigned", render: (u) => fmtDate(u.assigned_date) },
@@ -3297,7 +3332,10 @@ textarea.inp{min-height:68px;resize:vertical}
         { label: "Upload document", icon: "upload", hidden: !w, onClick: () => open("document", { relatedType: "unit", relatedId: u.id }) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Units", sub: "Flats in the project and who holds them. One shareholder can hold several units without being duplicated.", demo: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("unit", {}) }, "Add unit") }), /* @__PURE__ */ React.createElement(Card, { title: "Floor view", sub: "Select a unit to edit or assign it" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, floors.map((fl) => /* @__PURE__ */ React.createElement("div", { className: "floor", key: fl }, /* @__PURE__ */ React.createElement("b", { className: "muted" }, "Floor ", fl), /* @__PURE__ */ React.createElement("div", { className: "chips" }, all.filter((u) => u.floor === fl).sort((a, b) => cmpStr(a.code, b.code)).map((u) => /* @__PURE__ */ React.createElement("button", { key: u.id, type: "button", className: "ucell s-" + u.status.split(" ")[0], onClick: () => w ? open("unit", { unit: u }) : u.shareholder_id && go("profile", { id: u.shareholder_id }), title: u.status }, /* @__PURE__ */ React.createElement("b", null, u.code), /* @__PURE__ */ React.createElement("span", null, u.holder || "Available"))))))), /* @__PURE__ */ React.createElement("div", { className: "legend", style: { marginTop: 14 } }, UNIT_STATUSES.map((s) => /* @__PURE__ */ React.createElement("span", { key: s }, /* @__PURE__ */ React.createElement(Status, { v: s }))))), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search unit or shareholder" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 12, empty: { title: "No units found", text: "Clear the search or choose another status.", icon: "building" } })));
+    const resUnits = all.length, assignedN = all.filter((u) => u.shareholder_id).length, availN = all.filter((u) => u.status === "Available").length;
+    const byFloor = (fl) => all.filter((u) => u.floor === fl).sort((a, b) => cmpStr(a.code, b.code));
+    const pick = (u) => w ? open("unit", { unit: u }) : u.shareholder_id && go("profile", { id: u.shareholder_id });
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Units", sub: "Fixed building plan: Ground to 3rd floor commercial, 4th to 12th floor residential (4 units per floor, 1,440 sq ft each), roof top for amenities.", demo: true }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Residential units", value: resUnits, sub: "9 floors × 4 units" }), /* @__PURE__ */ React.createElement(Stat, { label: "Unit size", value: "1,440 sq ft", sub: "Every residential unit" }), /* @__PURE__ */ React.createElement(Stat, { label: "Assigned to shareholders", value: assignedN, sub: resUnits - assignedN + " not assigned" }), /* @__PURE__ */ React.createElement(Stat, { label: "Available", value: availN, sub: "Open for allocation" })), /* @__PURE__ */ React.createElement(Card, { title: "Building structure", sub: w ? "Select a unit to assign a shareholder or change its status" : "Select an assigned unit to open its shareholder" }, /* @__PURE__ */ React.createElement("div", { className: "bldg" }, BUILDING.map((fl) => /* @__PURE__ */ React.createElement("div", { className: "bfloor " + (fl.units ? "res" : "non"), key: fl.floor }, /* @__PURE__ */ React.createElement("div", { className: "bfloor-h" }, /* @__PURE__ */ React.createElement("b", null, fl.label), /* @__PURE__ */ React.createElement("span", null, fl.use, fl.units ? " · " + fl.units + " units" : "")), fl.units ? /* @__PURE__ */ React.createElement("div", { className: "bunits" }, byFloor(fl.floor).map((u) => /* @__PURE__ */ React.createElement("button", { key: u.id, type: "button", className: "ucard s-" + u.status.split(" ")[0], onClick: () => pick(u), "aria-label": "Unit " + u.code + ", " + u.status + (u.holder ? ", " + u.holder : "") }, /* @__PURE__ */ React.createElement("div", { className: "uc-top" }, /* @__PURE__ */ React.createElement("b", null, u.code), /* @__PURE__ */ React.createElement(Status, { v: u.status })), /* @__PURE__ */ React.createElement("span", { className: "uc-size" }, u.size_sqft.toLocaleString("en-US"), " sq ft"), /* @__PURE__ */ React.createElement("span", { className: "uc-who" }, u.holder || "No shareholder"), u.pc && /* @__PURE__ */ React.createElement("span", { className: "uc-pay" }, fmtPct(u.pc.pctExact), " of construction paid")))) : /* @__PURE__ */ React.createElement("div", { className: "bnone" }, fl.floor === 13 ? "Roof / amenity level. No residential units." : "Commercial floor. No residential units."))))), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search unit or shareholder" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 12, empty: { title: "No units found", text: "Clear the search or choose another status.", icon: "building" } })));
   }
   function ConstructionPage({ planId }) {
     return planId ? /* @__PURE__ */ React.createElement(PlanDetail, { id: planId }) : /* @__PURE__ */ React.createElement(PlanList, null);
@@ -3361,7 +3399,7 @@ textarea.inp{min-height:68px;resize:vertical}
         { label: "Reverse entry", icon: "undo", danger: true, hidden: !(r.canReverse && can(user, "reverse")), onClick: () => open("reverse", { kind: "cons", id: r.id }) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: "Unit " + unit.code, sub: plan.code + " · " + unit.size_sqft + " sq ft · floor " + unit.floor, flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(ShLink, { id: plan.shareholder_id }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: "Unit " + unit.code, sub: plan.code + " · " + unit.size_sqft + " sq ft · " + floorName(unit.floor), flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(ShLink, { id: plan.shareholder_id }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
   }
   function ExpenseTable({ rows, pageSize = 10, empty }) {
     const { db, user, open, confirm, run, S } = useApp();
@@ -3548,9 +3586,61 @@ textarea.inp{min-height:68px;resize:vertical}
   function asOf(list, p, key) {
     return sum(list.filter((x) => live(x) && x[key] === p[key] && (x.payment_date < p.payment_date || x.payment_date === p.payment_date && x.created_at <= p.created_at)), (x) => x.amount);
   }
+  function useFitOnePage(deps) {
+    const doc = useRef(null), body = useRef(null), fit = useRef(null);
+    const [scale, setScale] = useState(1);
+    const run = useCallback(() => {
+      const b = body.current, f = fit.current;
+      if (!b || !f) return;
+      const fits = (z) => {
+        f.style.zoom = z;
+        const bh = b.getBoundingClientRect().height, fh = f.getBoundingClientRect().height;
+        return bh > 0 && fh <= bh + 0.5;
+      };
+      let lo = 0.12, hi = 1, best;
+      if (fits(1)) best = 1;
+      else {
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        best = lo;
+        best = Math.floor(best * 1e3) / 1e3;
+        fits(best);
+      }
+      f.style.zoom = best;
+      setScale(best);
+    }, []);
+    useLayoutEffect(() => {
+      run();
+    }, deps);
+    useEffect(() => {
+      const d = doc.current;
+      if (!d) return;
+      const again = () => run();
+      d.addEventListener("load", again, true);
+      window.addEventListener("beforeprint", again);
+      window.addEventListener("resize", again);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(again);
+      const t = setTimeout(again, 400), t2 = setTimeout(again, 1500);
+      return () => {
+        d.removeEventListener("load", again, true);
+        window.removeEventListener("beforeprint", again);
+        window.removeEventListener("resize", again);
+        clearTimeout(t);
+        clearTimeout(t2);
+      };
+    }, []);
+    return { doc, body, fit, scale };
+  }
   function DocFrame({ title, docNo, date, ctx, children, landscape, note }) {
     const st2 = ctx.db.settings[0];
-    return /* @__PURE__ */ React.createElement("article", { className: "doc" + (landscape ? " land" : "") }, /* @__PURE__ */ React.createElement("header", { className: "doc-head" }, /* @__PURE__ */ React.createElement("div", { className: "doc-brand" }, /* @__PURE__ */ React.createElement("div", { className: "doc-mark", "aria-hidden": "true" }, "AN"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "doc-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "doc-proj" }, st2.project_name))), /* @__PURE__ */ React.createElement("div", { className: "doc-id" }, /* @__PURE__ */ React.createElement("div", { className: "doc-title" }, title), docNo && /* @__PURE__ */ React.createElement("div", null, "No. ", /* @__PURE__ */ React.createElement("b", { className: "mono" }, docNo)), /* @__PURE__ */ React.createElement("div", null, "Date: ", /* @__PURE__ */ React.createElement("b", null, fmtDate(date || TODAY))))), /* @__PURE__ */ React.createElement("div", { className: "doc-body" }, children), /* @__PURE__ */ React.createElement("footer", { className: "doc-foot" }, /* @__PURE__ */ React.createElement("span", null, st2.company_name, " · ", title, docNo ? " · " + docNo : ""), /* @__PURE__ */ React.createElement("span", null, "Printed ", fmtDate(TODAY), " by ", ctx.user.name, st2._demo ? " · Sample data, not a real record" : ""), note && /* @__PURE__ */ React.createElement("span", { className: "doc-note" }, note)));
+    const fp = useFitOnePage([children]);
+    useEffect(() => {
+      window.dispatchEvent(new CustomEvent("docfit", { detail: fp.scale }));
+    }, [fp.scale]);
+    return /* @__PURE__ */ React.createElement("article", { className: "doc" + (landscape ? " land" : ""), ref: fp.doc, "data-fit": fp.scale }, /* @__PURE__ */ React.createElement("header", { className: "doc-head" }, /* @__PURE__ */ React.createElement("div", { className: "doc-brand" }, /* @__PURE__ */ React.createElement("div", { className: "doc-mark", "aria-hidden": "true" }, "AN"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "doc-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "doc-proj" }, st2.project_name))), /* @__PURE__ */ React.createElement("div", { className: "doc-id" }, /* @__PURE__ */ React.createElement("div", { className: "doc-title" }, title), docNo && /* @__PURE__ */ React.createElement("div", null, "No. ", /* @__PURE__ */ React.createElement("b", { className: "mono" }, docNo)), /* @__PURE__ */ React.createElement("div", null, "Date: ", /* @__PURE__ */ React.createElement("b", null, fmtDate(date || TODAY))))), /* @__PURE__ */ React.createElement("div", { className: "doc-body", ref: fp.body }, /* @__PURE__ */ React.createElement("div", { className: "doc-fit", ref: fp.fit }, children)), /* @__PURE__ */ React.createElement("footer", { className: "doc-foot" }, /* @__PURE__ */ React.createElement("span", null, st2.company_name, " · ", title, docNo ? " · " + docNo : ""), /* @__PURE__ */ React.createElement("span", null, "Printed ", fmtDate(TODAY), " by ", ctx.user.name, st2._demo ? " · Sample data, not a real record" : ""), note && /* @__PURE__ */ React.createElement("span", { className: "doc-note" }, note)));
   }
   function DT({ cols, rows, foot, empty }) {
     return /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, cols.map((c, i) => /* @__PURE__ */ React.createElement("th", { key: i, className: c.r ? "r" : "", style: c.w ? { width: c.w } : void 0 }, c.l)))), /* @__PURE__ */ React.createElement("tbody", null, rows.length ? rows.map((r, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: r._cls || "" }, cols.map((c, j) => /* @__PURE__ */ React.createElement("td", { key: j, className: c.r ? "r" : "" }, c.f ? c.f(r, i) : r[c.k])))) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: cols.length, className: "dt-empty" }, empty || "No records."))), foot && /* @__PURE__ */ React.createElement("tfoot", null, /* @__PURE__ */ React.createElement("tr", null, cols.map((c, j) => {
@@ -3598,7 +3688,7 @@ textarea.inp{min-height:68px;resize:vertical}
         const total = share ? bs.grand : pc.total, paidAt = share ? asOf(db.share_payments, p, "booking_id") : asOf(db.construction_payments, p, "plan_id"), dueAt = roundMoney(total - paidAt);
         const att = okDoc(db, p.attachment_doc_id), reversed = p.status === "Reversed", isRev = p.kind === "reversal";
         const unit = share ? db.units.filter((x) => live(x) && x.shareholder_id === sh.id) : [u];
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh)), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : "Unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [["Booking", b.code], ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", "Floor " + u.floor + " · " + u.size_sqft + " sq ft"], ["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: (r) => /* @__PURE__ */ React.createElement("b", null, fmtMoney(p.amount)) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: p.method, x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", fmtMoney(paidAt), "Including this payment"], ["Remaining due", fmtMoney(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh)), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : "Unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [["Booking", b.code], ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"], ["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: (r) => /* @__PURE__ */ React.createElement("b", null, fmtMoney(p.amount)) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: p.method, x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", fmtMoney(paidAt), "Including this payment"], ["Remaining due", fmtMoney(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
       }
     },
     /* Share booking / transaction document */
@@ -3630,7 +3720,7 @@ textarea.inp{min-height:68px;resize:vertical}
           run = roundMoney(run - p.amount);
           return { n: i + 1, date: fmtDate(p.payment_date), rc: p.receipt_no, m: p.method, x: p.reference || "—", note: p.note || (p.kind === "reversal" ? "Reversal" : ""), a: p.amount, bal: run, _cls: p.status === "Reversed" ? "strike" : "" };
         });
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Construction contribution statement", docNo: "CS-" + plan.code + "-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement(Sect, { title: "Shareholder and unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], ["Shareholder ID", sh.code], ["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", "Floor " + u.floor + " · " + u.size_sqft + " sq ft"], ["Contribution ref.", plan.code], ["Status", pc.status]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Position as of today" }, /* @__PURE__ */ React.createElement(Boxes, { items: [["Total contribution", fmtMoney(pc.total)], ["Total paid", fmtMoney(pc.paid), pc.count + " payment" + (pc.count === 1 ? "" : "s")], ["Remaining due", fmtMoney(pc.due)], ["Payment progress", fmtPct(pc.pctExact)]] }), /* @__PURE__ */ React.createElement(PBar, { pct: pc.pct })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment history" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "#", k: "n", w: "6%" }, { l: "Date", k: "date" }, { l: "Receipt no.", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Note", k: "note" }, { l: "Amount", r: true, f: (r) => fmtMoney(r.a) }, { l: "Due after", r: true, f: (r) => fmtMoney(r.bal) }], rows, foot: { 4: "Total paid", 6: fmtMoney(pc.paid), 7: fmtMoney(pc.due) }, empty: "No payment has been recorded yet." })), /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "There is no fixed installment schedule. The client may pay any amount on any date until the total contribution is settled. Reversed entries are shown struck through and are cancelled by a matching reversal."), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Shareholder / client", sh.full_name]] }));
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Construction contribution statement", docNo: "CS-" + plan.code + "-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement(Sect, { title: "Shareholder and unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], ["Shareholder ID", sh.code], ["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"], ["Contribution ref.", plan.code], ["Status", pc.status]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Position as of today" }, /* @__PURE__ */ React.createElement(Boxes, { items: [["Total contribution", fmtMoney(pc.total)], ["Total paid", fmtMoney(pc.paid), pc.count + " payment" + (pc.count === 1 ? "" : "s")], ["Remaining due", fmtMoney(pc.due)], ["Payment progress", fmtPct(pc.pctExact)]] }), /* @__PURE__ */ React.createElement(PBar, { pct: pc.pct })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment history" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "#", k: "n", w: "6%" }, { l: "Date", k: "date" }, { l: "Receipt no.", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Note", k: "note" }, { l: "Amount", r: true, f: (r) => fmtMoney(r.a) }, { l: "Due after", r: true, f: (r) => fmtMoney(r.bal) }], rows, foot: { 4: "Total paid", 6: fmtMoney(pc.paid), 7: fmtMoney(pc.due) }, empty: "No payment has been recorded yet." })), /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "There is no fixed installment schedule. The client may pay any amount on any date until the total contribution is settled. Reversed entries are shown struck through and are cancelled by a matching reversal."), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Shareholder / client", sh.full_name]] }));
       }
     },
     /* Shareholder financial statement */
@@ -3731,6 +3821,7 @@ textarea.inp{min-height:68px;resize:vertical}
     const def = PRINT_DOCS[doc];
     const tok = useRef({});
     const wrap = useRef(null);
+    const [fitScale, setFitScale] = useState(1);
     const [scale, setScale] = useState(1);
     const [blocked, setBlocked] = useState(false);
     const [zoomMode, setZoomMode] = useState("fit");
@@ -3758,6 +3849,11 @@ textarea.inp{min-height:68px;resize:vertical}
       window.addEventListener("resize", fit);
       return () => window.removeEventListener("resize", fit);
     }, [zoomMode, pw]);
+    useEffect(() => {
+      const h = (e) => setFitScale(e.detail);
+      window.addEventListener("docfit", h);
+      return () => window.removeEventListener("docfit", h);
+    }, []);
     const root = document.getElementById("print-root");
     useEffect(() => {
       document.body.classList.add("printing");
@@ -3782,7 +3878,7 @@ textarea.inp{min-height:68px;resize:vertical}
       }, 700);
     };
     const title = def.title(args || {});
-    return /* @__PURE__ */ React.createElement("div", { className: "pv", role: "dialog", "aria-modal": "true", "aria-label": "Print preview: " + title }, /* @__PURE__ */ React.createElement("div", { className: "pv-bar" }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("b", null, title), /* @__PURE__ */ React.createElement("span", { className: "pv-sub" }, "A4 ", landscape ? "landscape" : "portrait", " · print preview")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => setZoomMode(zoomMode === "fit" ? "full" : "fit") }, zoomMode === "fit" ? "Actual size" : "Fit to screen"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "printer", onClick: doPrint }, "Print A4"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "x", onClick: onClose }, "Close"))), blocked && /* @__PURE__ */ React.createElement("div", { className: "pv-note", role: "status" }, /* @__PURE__ */ React.createElement("b", null, "Printing did not open."), " This preview may be embedded in a page that blocks the print dialog. Open the app in its own browser tab, then choose Print A4 (or press Ctrl/Cmd+P) to print or save as PDF. The layout shown here is the layout that will print."), /* @__PURE__ */ React.createElement("div", { className: "pv-scroll", ref: wrap }, /* @__PURE__ */ React.createElement("div", { className: "paper-outer", style: { width: pw * scale } }, /* @__PURE__ */ React.createElement("div", { className: "paper" + (landscape ? " land" : ""), style: { zoom: scale, width: pw } }, el))), root && ReactDOM.createPortal(/* @__PURE__ */ React.createElement("div", { className: "print-copy", "data-orient": landscape ? "landscape" : "portrait" }, el), root));
+    return /* @__PURE__ */ React.createElement("div", { className: "pv", role: "dialog", "aria-modal": "true", "aria-label": "Print preview: " + title }, /* @__PURE__ */ React.createElement("div", { className: "pv-bar" }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("b", null, title), /* @__PURE__ */ React.createElement("span", { className: "pv-sub" }, "A4 ", landscape ? "landscape" : "portrait", " · exactly one page", fitScale < 0.995 ? " · scaled to " + Math.round(fitScale * 100) + "% to fit" : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => setZoomMode(zoomMode === "fit" ? "full" : "fit") }, zoomMode === "fit" ? "Actual size" : "Fit to screen"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "printer", onClick: doPrint }, "Print A4"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "x", onClick: onClose }, "Close"))), blocked && /* @__PURE__ */ React.createElement("div", { className: "pv-note", role: "status" }, /* @__PURE__ */ React.createElement("b", null, "Printing did not open."), " This preview may be embedded in a page that blocks the print dialog. Open the app in its own browser tab, then choose Print A4 (or press Ctrl/Cmd+P) to print or save as PDF. The layout shown here is the layout that will print."), /* @__PURE__ */ React.createElement("div", { className: "pv-scroll", ref: wrap }, /* @__PURE__ */ React.createElement("div", { className: "paper-outer", style: { width: pw * scale } }, /* @__PURE__ */ React.createElement("div", { className: "paper" + (landscape ? " land" : ""), style: { zoom: scale, width: pw } }, el))), root && ReactDOM.createPortal(/* @__PURE__ */ React.createElement("div", { className: "print-copy", "data-orient": landscape ? "landscape" : "portrait" }, el), root));
   }
   MODAL_REGISTRY.printPreview = PrintPreview;
   MODAL_REGISTRY.lightbox = Lightbox;

@@ -62,20 +62,26 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   fs.writeFileSync('/tmp/claude-0/state.txt', 'x');
   await page.screenshot({ path: 'shots/x.png' });
   await page.evaluate(() => 0);
-  const pdf = async (name) => { await page.emulateMedia({ media: 'print' }); await page.pdf({ path: 'out/' + name + '.pdf', preferCSSPageSize: true, printBackground: true }); await page.emulateMedia({ media: 'screen' }); };
+  const pdf = async (name) => { await page.emulateMedia({ media: 'print' }); await page.waitForTimeout(500); await page.pdf({ path: 'out/' + name + '.pdf', preferCSSPageSize: true, printBackground: true }); await page.emulateMedia({ media: 'screen' }); };
   await pdf('share_receipt');
   await page.locator('.pv').getByRole('button', { name: 'Close' }).click(); await page.locator('[role=dialog]').last().getByRole('button', { name: 'Done' }).click();
-  // 3 unit + construction total
-  await nav('Units'); await page.getByRole('button', { name: /Add unit/ }).click();
-  await dlg().getByLabel(/Unit label/).fill('T-701'); await dlg().getByLabel(/^Floor/).fill('7'); await dlg().getByLabel(/Size/).fill('1350');
+  // 3 fixed building structure + assign a unit
+  await nav('Units');
+  const floorsTxt = await page.locator('.bldg').innerText();
+  ok(['Ground','1st','2nd','3rd','4th','12th','Roof Top'].every(x => floorsTxt.includes(x)) && floorsTxt.includes('Commercial') && floorsTxt.includes('Roof / Amenities'), 'building structure shows Ground..12th + Roof Top');
+  ok(await page.locator('.bfloor.res').count() === 9 && await page.locator('.ucard').count() === 36, '9 residential floors, 36 unit cards');
+  ok(await page.locator('.bfloor.non').count() === 5 && await page.locator('.bfloor.non .ucard').count() === 0, 'Ground-3rd and Roof Top have no units');
+  ok(!(await page.getByRole('button', { name: /Add unit/ }).count()), 'no free-form Add unit button');
+  const card = page.locator('.ucard.s-Available').first(); const UC = (await card.locator('.uc-top b').innerText()).trim(); console.log('using unit', UC);
+  await card.click();
+  await dlg().getByLabel('Status').selectOption('Assigned');
   await dlg().getByLabel(/Assigned shareholder/).selectOption({ label: (await dlg().getByLabel(/Assigned shareholder/).locator('option', { hasText: 'Rahim Uddin Test' }).textContent()) });
-  await dlg().getByLabel('Status').selectOption('Assigned'); await dlg().getByRole('button', { name: 'Add unit' }).click(); await page.waitForTimeout(800);
-  console.log('UNITERR', await dlg().locator('.err').allTextContents(), await toasts());
-  ok((await toasts()).join(' ').includes('Unit added'), 'unit assigned');
+  await dlg().getByRole('button', { name: 'Save changes' }).click(); await page.waitForTimeout(800);
+  ok((await toasts()).join(' ').includes('Unit updated'), 'unit assigned to shareholder'); await shot('03b_units');
   await nav('Construction Contributions'); await page.getByRole('button', { name: /Set total contribution/ }).first().click();
-  await dlg().getByLabel(/^Unit/).selectOption({ label: (await dlg().getByLabel(/^Unit/).locator('option', { hasText: 'T-701' }).textContent()) });
+  await dlg().getByLabel(/^Unit/).selectOption({ label: (await dlg().getByLabel(/^Unit/).locator('option', { hasText: UC }).textContent()) });
   await dlg().getByLabel(/Total construction contribution/).fill('2000000'); await dlg().getByRole('button', { name: 'Set total' }).click(); await page.waitForTimeout(800);
-  await page.getByPlaceholder(/Search unit/).fill('T-701'); await page.locator('tbody tr', { hasText: 'T-701' }).click(); await page.waitForSelector('text=Payment history');
+  await page.getByPlaceholder(/Search unit/).fill(UC); await page.locator('tbody tr', { hasText: UC }).click(); await page.waitForSelector('text=Payment history');
   ok(await page.locator('text=Not Started').count() > 0, 'plan starts at Not Started, due 20,00,000');
   // 4 flexible payments
   const pays = [['50000', 'Cash', ''], ['120000', 'bKash', 'BK1'], ['30000', 'Bank Transfer', 'TT-9'], ['75000', 'Cheque', 'CHQ-0011']];
@@ -100,9 +106,20 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   await page.locator('tbody tr').nth(0).getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: 'Reverse entry' }).click();
   await dlg().getByRole('textbox').first().fill('Test reversal'); await dlg().locator('#rev-again').uncheck(); await dlg().getByRole('button', { name: 'Reverse entry' }).click(); await page.waitForTimeout(900);
   ok((await page.locator('main').innerText()).includes('৳2,25,000') || (await page.locator('main').innerText()).includes('৳2,00,000'), 'reversal lowers paid; history kept'); 
+  // stress: many payments so statements become very long
+  await nav('Construction Contributions'); await page.getByPlaceholder(/Search unit/).fill(UC); await page.locator('tbody tr', { hasText: UC }).click(); await page.waitForSelector('text=Payment history');
+  for (let i = 0; i < 70; i++) {
+    await page.getByRole('button', { name: 'Add payment' }).first().click();
+    await dlg().getByLabel(/^Amount/).fill(String(1000 + i)); await dlg().getByLabel('Payment method').selectOption('bKash'); await dlg().getByLabel(/reference/i).fill('STRESS-' + i);
+    await dlg().getByRole('button', { name: /Record payment/ }).click(); await page.waitForTimeout(520);
+    await page.locator('[role=dialog]').last().getByRole('button', { name: 'Done' }).click();
+  }
+  ok(true, '70 extra payments recorded (stress)');
+  await page.getByRole('button', { name: 'Print statement' }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(600);
+  console.log('pv-sub:', await page.locator('.pv-sub').innerText()); await shot('08b_long_statement'); await pdf('LONG_construction_statement'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   // 5 profile, dashboard, reports, other prints
   await nav('Shareholders'); await page.getByPlaceholder('Search name, ID, phone, NID').fill('Rahim Uddin'); await page.locator('tbody tr', { hasText: 'Rahim Uddin Test' }).click(); await page.waitForSelector('text=Land share');
-  await page.getByRole('tab', { name: /Construction/ }).click(); ok((await page.locator('main').innerText()).includes('T-701'), 'profile construction tab shows unit'); await shot('09_profile_cons');
+  await page.getByRole('tab', { name: /Construction/ }).click(); ok((await page.locator('main').innerText()).includes(UC), 'profile construction tab shows unit'); await shot('09_profile_cons');
   for (const [item, name] of [['Shareholder 360 summary', 'profile_360'], ['Financial statement', 'shareholder_statement'], ['Payment history statement', 'payment_statement']]) {
     await page.getByRole('button', { name: 'Print' }).first().click(); await page.getByRole('menuitem', { name: item }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(400); await shot('10_' + name); await pdf(name); await page.locator('.pv').getByRole('button', { name: 'Close' }).click(); }
   await nav('Share Sales'); await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print booking/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('booking'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
@@ -114,5 +131,6 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   await nav('Reports'); for (const id of ['Construction Contribution', 'Construction Due']) { const b = page.locator('[role=tab]', { hasText: id }).first(); if (await b.count()) { await b.click(); await page.waitForTimeout(200); } }
   await page.getByRole('button', { name: 'Print A4' }).click(); await page.waitForSelector('.pv .paper'); await shot('14_report_print'); await pdf('report'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   ok(true, 'reports print');
+  { const cp = require('child_process'); let bad = 0; for (const f of fs.readdirSync('out').filter(x => x.endsWith('.pdf'))) { const o = cp.execSync('pdfinfo out/' + f).toString(); const pg = +/Pages:\s+(\d+)/.exec(o)[1]; const sz = /Page size:\s+(.*)/.exec(o)[1]; if (pg !== 1) bad++; console.log((pg === 1 ? 'ok   ' : 'FAIL ') + 'one page: ' + f + ' -> ' + pg + ' page, ' + sz); } ok(bad === 0, 'every printed document is exactly one A4 page'); }
   console.log('errors: ' + (errors.length ? '\n' + errors.join('\n') : 'none')); await browser.close();
 })().catch(e => { console.error('SCRIPT FAIL', e.message.split('\n').slice(0, 6).join('\n')); process.exit(1); });

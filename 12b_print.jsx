@@ -11,14 +11,38 @@ function asOf(list, p, key) {
   return sum(list.filter((x) => live(x) && x[key] === p[key] && (x.payment_date < p.payment_date || (x.payment_date === p.payment_date && x.created_at <= p.created_at))), (x) => x.amount);
 }
 
+/* One-page rule: every document is exactly one A4 sheet. After layout, the content block is scaled
+   (CSS zoom) to the largest size that still fits the space between header and footer. */
+function useFitOnePage(deps) {
+  const doc = useRef(null), body = useRef(null), fit = useRef(null); const [scale, setScale] = useState(1);
+  const run = useCallback(() => {
+    const b = body.current, f = fit.current; if (!b || !f) return;
+    const fits = (z) => { f.style.zoom = z; const bh = b.getBoundingClientRect().height, fh = f.getBoundingClientRect().height; return bh > 0 && fh <= bh + 0.5; };
+    let lo = 0.12, hi = 1, best;
+    if (fits(1)) best = 1; else { for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; } best = lo; best = Math.floor(best * 1000) / 1000; fits(best); }
+    f.style.zoom = best; setScale(best);
+  }, []);
+  useLayoutEffect(() => { run(); }, deps);
+  useEffect(() => {
+    const d = doc.current; if (!d) return;
+    const again = () => run(); d.addEventListener('load', again, true);
+    window.addEventListener('beforeprint', again); window.addEventListener('resize', again);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(again);
+    const t = setTimeout(again, 400), t2 = setTimeout(again, 1500);
+    return () => { d.removeEventListener('load', again, true); window.removeEventListener('beforeprint', again); window.removeEventListener('resize', again); clearTimeout(t); clearTimeout(t2); };
+  }, []);
+  return { doc: doc, body: body, fit: fit, scale: scale };
+}
+
 function DocFrame({ title, docNo, date, ctx, children, landscape, note }) {
-  const st = ctx.db.settings[0];
-  return (<article className={'doc' + (landscape ? ' land' : '')}>
+  const st = ctx.db.settings[0]; const fp = useFitOnePage([children]);
+  useEffect(() => { window.dispatchEvent(new CustomEvent('docfit', { detail: fp.scale })); }, [fp.scale]);
+  return (<article className={'doc' + (landscape ? ' land' : '')} ref={fp.doc} data-fit={fp.scale}>
     <header className="doc-head">
       <div className="doc-brand"><div className="doc-mark" aria-hidden="true">AN</div><div><div className="doc-co">{st.company_name}</div><div className="doc-proj">{st.project_name}</div></div></div>
       <div className="doc-id"><div className="doc-title">{title}</div>{docNo && <div>No. <b className="mono">{docNo}</b></div>}<div>Date: <b>{fmtDate(date || TODAY)}</b></div></div>
     </header>
-    <div className="doc-body">{children}</div>
+    <div className="doc-body" ref={fp.body}><div className="doc-fit" ref={fp.fit}>{children}</div></div>
     <footer className="doc-foot">
       <span>{st.company_name} · {title}{docNo ? ' · ' + docNo : ''}</span>
       <span>Printed {fmtDate(TODAY)} by {ctx.user.name}{st._demo ? ' · Sample data, not a real record' : ''}</span>
@@ -71,7 +95,7 @@ const PRINT_DOCS = {
         {reversed && <div className="stamp">REVERSED</div>}
         <Sect title="Received from">{partyBox(db, sh)}</Sect>
         <Sect title={share ? 'Booking and unit' : 'Unit'}>
-          <KV cols={2} items={share ? [['Booking', b.code], ['Shares booked', b.quantity + ' × ' + fmtMoney(b.unit_price)], ['Unit(s)', unit.map((x) => x.code).join(', ') || 'Not assigned yet'], ['Payment type', 'Land share payment']] : [['Unit', <b>{u.code}</b>], ['Floor · size', 'Floor ' + u.floor + ' · ' + u.size_sqft + ' sq ft'], ['Contribution ref.', plan.code], ['Payment type', 'Construction contribution']]} />
+          <KV cols={2} items={share ? [['Booking', b.code], ['Shares booked', b.quantity + ' × ' + fmtMoney(b.unit_price)], ['Unit(s)', unit.map((x) => x.code).join(', ') || 'Not assigned yet'], ['Payment type', 'Land share payment']] : [['Unit', <b>{u.code}</b>], ['Floor · size', floorName(u.floor) + ' · ' + u.size_sqft.toLocaleString('en-US') + ' sq ft'], ['Contribution ref.', plan.code], ['Payment type', 'Construction contribution']]} />
         </Sect>
         <Sect title="Payment details">
           <DT cols={[{ l: 'Receipt no.', k: 'r' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: (r) => <b>{fmtMoney(p.amount)}</b> }]} rows={[{ r: p.receipt_no, d: fmtDate(p.payment_date), m: p.method, x: p.reference || '—' }]} />
@@ -125,7 +149,7 @@ const PRINT_DOCS = {
       const pays = pc.payments.slice().sort((x, y) => x.payment_date.localeCompare(y.payment_date) || x.created_at.localeCompare(y.created_at)); let run = pc.total;
       const rows = pays.map((p, i) => { run = roundMoney(run - p.amount); return { n: i + 1, date: fmtDate(p.payment_date), rc: p.receipt_no, m: p.method, x: p.reference || '—', note: p.note || (p.kind === 'reversal' ? 'Reversal' : ''), a: p.amount, bal: run, _cls: p.status === 'Reversed' ? 'strike' : '' }; });
       return (<DocFrame ctx={ctx} title="Construction contribution statement" docNo={'CS-' + plan.code + '-' + TODAY.replace(/-/g, '')} date={TODAY}>
-        <Sect title="Shareholder and unit"><KV cols={2} items={[['Shareholder', <b>{sh.full_name}</b>], ['Shareholder ID', sh.code], ['Unit', <b>{u.code}</b>], ['Floor · size', 'Floor ' + u.floor + ' · ' + u.size_sqft + ' sq ft'], ['Contribution ref.', plan.code], ['Status', pc.status]]} /></Sect>
+        <Sect title="Shareholder and unit"><KV cols={2} items={[['Shareholder', <b>{sh.full_name}</b>], ['Shareholder ID', sh.code], ['Unit', <b>{u.code}</b>], ['Floor · size', floorName(u.floor) + ' · ' + u.size_sqft.toLocaleString('en-US') + ' sq ft'], ['Contribution ref.', plan.code], ['Status', pc.status]]} /></Sect>
         <Sect title="Position as of today">
           <Boxes items={[['Total contribution', fmtMoney(pc.total)], ['Total paid', fmtMoney(pc.paid), pc.count + ' payment' + (pc.count === 1 ? '' : 's')], ['Remaining due', fmtMoney(pc.due)], ['Payment progress', fmtPct(pc.pctExact)]]} />
           <PBar pct={pc.pct} />
@@ -284,7 +308,7 @@ function st(ctx) { return ctx.db.settings[0]; }
 /* ---------------- preview + print ---------------- */
 function PrintPreview({ doc, args, onClose }) {
   const app = useApp(); const def = PRINT_DOCS[doc]; const tok = useRef({}); const wrap = useRef(null);
-  const [scale, setScale] = useState(1); const [blocked, setBlocked] = useState(false); const [zoomMode, setZoomMode] = useState('fit');
+  const [fitScale, setFitScale] = useState(1); const [scale, setScale] = useState(1); const [blocked, setBlocked] = useState(false); const [zoomMode, setZoomMode] = useState('fit');
   const landscape = def && def.landscape ? def.landscape(args || {}) : false, pw = landscape ? 1123 : 794;
   useEffect(() => {
     MODAL_STACK.push(tok.current); const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
@@ -297,6 +321,7 @@ function PrintPreview({ doc, args, onClose }) {
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, [zoomMode, pw]);
   /* #print-root holds the same document for the browser's print engine. */
+  useEffect(() => { const h = (e) => setFitScale(e.detail); window.addEventListener('docfit', h); return () => window.removeEventListener('docfit', h); }, []);
   const root = document.getElementById('print-root');
   useEffect(() => { document.body.classList.add('printing'); return () => document.body.classList.remove('printing'); }, []);
   if (!def) return null;
@@ -310,7 +335,7 @@ function PrintPreview({ doc, args, onClose }) {
   const title = def.title(args || {});
   return (<div className="pv" role="dialog" aria-modal="true" aria-label={'Print preview: ' + title}>
     <div className="pv-bar">
-      <div style={{ minWidth: 0 }}><b>{title}</b><span className="pv-sub">A4 {landscape ? 'landscape' : 'portrait'} · print preview</span></div>
+      <div style={{ minWidth: 0 }}><b>{title}</b><span className="pv-sub">A4 {landscape ? 'landscape' : 'portrait'} · exactly one page{fitScale < 0.995 ? ' · scaled to ' + Math.round(fitScale * 100) + '% to fit' : ''}</span></div>
       <div className="chips">
         <Btn size="sm" onClick={() => setZoomMode(zoomMode === 'fit' ? 'full' : 'fit')}>{zoomMode === 'fit' ? 'Actual size' : 'Fit to screen'}</Btn>
         <Btn size="sm" variant="primary" icon="printer" onClick={doPrint}>Print A4</Btn>

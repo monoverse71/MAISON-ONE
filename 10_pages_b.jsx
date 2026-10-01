@@ -53,12 +53,11 @@ function UnitsPage() {
   const [q, setQ] = useState(''); const [flt, setFlt] = useState('all');
   const all = useMemo(() => db.units.filter(live).map((u) => { const plan = db.construction_plans.filter((p) => live(p) && p.unit_id === u.id && p.status !== 'Cancelled')[0]; return Object.assign({ holder: u.shareholder_id ? shName(db, u.shareholder_id) : '', plan: plan || null, pc: plan ? Calc.plan(db, plan) : null }, u); }), [db]);
   const rows = all.filter((u) => (flt === 'all' || u.status === flt) && (!q.trim() || (u.code + ' ' + u.holder).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
-  const floors = Array.from(new Set(all.map((u) => u.floor))).sort((a, b) => b - a);
   const opts = [{ id: 'all', label: 'All', count: all.length }].concat(UNIT_STATUSES.map((s) => ({ id: s, label: s, count: all.filter((u) => u.status === s).length })));
   const cols = [
     { key: 'code', label: 'Unit', render: (u) => <b>{u.code}</b> },
-    { key: 'floor', label: 'Floor', align: 'r' },
-    { key: 'size_sqft', label: 'Size', align: 'r', render: (u) => u.size_sqft + ' sq ft' },
+    { key: 'floor', label: 'Floor', align: 'r', render: (u) => ORD(u.floor) },
+    { key: 'size_sqft', label: 'Size', align: 'r', render: (u) => u.size_sqft.toLocaleString('en-US') + ' sq ft' },
     { key: 'status', label: 'Status', render: (u) => <Status v={u.status} /> },
     { key: 'holder', label: 'Assigned shareholder', render: (u) => u.shareholder_id ? <ShLink id={u.shareholder_id} /> : <span className="muted">Not assigned</span> },
     { key: 'assigned_date', label: 'Assigned', render: (u) => fmtDate(u.assigned_date) },
@@ -70,11 +69,28 @@ function UnitsPage() {
       { label: 'Upload document', icon: 'upload', hidden: !w, onClick: () => open('document', { relatedType: 'unit', relatedId: u.id }) }
     ]} /></div>) }
   ];
+  const resUnits = all.length, assignedN = all.filter((u) => u.shareholder_id).length, availN = all.filter((u) => u.status === 'Available').length;
+  const byFloor = (fl) => all.filter((u) => u.floor === fl).sort((a, b) => cmpStr(a.code, b.code));
+  const pick = (u) => w ? open('unit', { unit: u }) : (u.shareholder_id && go('profile', { id: u.shareholder_id }));
   return (<>
-    <PageHead title="Units" sub="Flats in the project and who holds them. One shareholder can hold several units without being duplicated." demo actions={w && <Btn variant="primary" icon="plus" onClick={() => open('unit', {})}>Add unit</Btn>} />
-    <Card title="Floor view" sub="Select a unit to edit or assign it">
-      <div style={{ display: 'grid', gap: 10 }}>{floors.map((fl) => (<div className="floor" key={fl}><b className="muted">Floor {fl}</b><div className="chips">{all.filter((u) => u.floor === fl).sort((a, b) => cmpStr(a.code, b.code)).map((u) => (<button key={u.id} type="button" className={'ucell s-' + u.status.split(' ')[0]} onClick={() => w ? open('unit', { unit: u }) : (u.shareholder_id && go('profile', { id: u.shareholder_id }))} title={u.status}><b>{u.code}</b><span>{u.holder || 'Available'}</span></button>))}</div></div>))}</div>
-      <div className="legend" style={{ marginTop: 14 }}>{UNIT_STATUSES.map((s) => <span key={s}><Status v={s} /></span>)}</div>
+    <PageHead title="Units" sub="Fixed building plan: Ground to 3rd floor commercial, 4th to 12th floor residential (4 units per floor, 1,440 sq ft each), roof top for amenities." demo />
+    <div className="grid g-auto">
+      <Stat label="Residential units" value={resUnits} sub="9 floors × 4 units" />
+      <Stat label="Unit size" value="1,440 sq ft" sub="Every residential unit" />
+      <Stat label="Assigned to shareholders" value={assignedN} sub={(resUnits - assignedN) + ' not assigned'} />
+      <Stat label="Available" value={availN} sub="Open for allocation" />
+    </div>
+    <Card title="Building structure" sub={w ? 'Select a unit to assign a shareholder or change its status' : 'Select an assigned unit to open its shareholder'}>
+      <div className="bldg">{BUILDING.map((fl) => (<div className={'bfloor ' + (fl.units ? 'res' : 'non')} key={fl.floor}>
+        <div className="bfloor-h"><b>{fl.label}</b><span>{fl.use}{fl.units ? ' · ' + fl.units + ' units' : ''}</span></div>
+        {fl.units ? <div className="bunits">{byFloor(fl.floor).map((u) => (<button key={u.id} type="button" className={'ucard s-' + u.status.split(' ')[0]} onClick={() => pick(u)} aria-label={'Unit ' + u.code + ', ' + u.status + (u.holder ? ', ' + u.holder : '')}>
+          <div className="uc-top"><b>{u.code}</b><Status v={u.status} /></div>
+          <span className="uc-size">{u.size_sqft.toLocaleString('en-US')} sq ft</span>
+          <span className="uc-who">{u.holder || 'No shareholder'}</span>
+          {u.pc && <span className="uc-pay">{fmtPct(u.pc.pctExact)} of construction paid</span>}
+        </button>))}</div>
+          : <div className="bnone">{fl.floor === 13 ? 'Roof / amenity level. No residential units.' : 'Commercial floor. No residential units.'}</div>}
+      </div>))}</div>
     </Card>
     <Card flush>
       <div className="toolbar"><SearchBox value={q} onChange={setQ} placeholder="Search unit or shareholder" /><Chips options={opts} value={flt} onChange={setFlt} /></div>
@@ -142,7 +158,7 @@ function PlanDetail({ id }) {
   ];
   return (<>
     <div><Btn size="sm" variant="ghost" icon="left" onClick={() => go('construction')}>All construction contributions</Btn></div>
-    <PageHead title={'Unit ' + unit.code} sub={plan.code + ' · ' + unit.size_sqft + ' sq ft · floor ' + unit.floor} flow="in" actions={<>
+    <PageHead title={'Unit ' + unit.code} sub={plan.code + ' · ' + unit.size_sqft + ' sq ft · ' + floorName(unit.floor)} flow="in" actions={<>
       <Btn icon="printer" onClick={() => open('printPreview', { doc: 'consStatement', args: { planId: id } })}>Print statement</Btn>
       {can(user, 'approve') && <Btn icon="edit" onClick={() => open('planTotal', { planId: id })}>Change total</Btn>}
       {w && <Btn variant="primary" icon="card" onClick={() => open('consPayment', { planId: id })}>Add payment</Btn>}</>} />
