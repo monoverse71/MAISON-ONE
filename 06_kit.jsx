@@ -15,6 +15,7 @@ const ICONS = {
   receipt: 'M5 2h14v20l-3.5-2-3.5 2-3.5-2L5 22z M9 7h6 M9 11h6 M9 15h4',
   card: 'M1 4h22v16H1z M1 10h22',
   printer: 'M6 9V2h12v7 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v8H6z',
+  image: 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3 M21 15l-5-5L5 21',
   file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h8',
   chart: 'M12 20V10 M18 20V4 M6 20v-4',
   sliders: 'M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6',
@@ -196,6 +197,11 @@ class Boundary extends React.Component {
   static getDerivedStateFromError(err) { return { err: err }; }
   componentDidUpdate(prev) { if (prev.resetKey !== this.props.resetKey && this.state.err) this.setState({ err: null }); }
   render() { return this.state.err ? <Card><Empty icon="alert" title="This page could not be shown" text={String(this.state.err.message || this.state.err)} action={<Btn onClick={() => this.setState({ err: null })}>Try again</Btn>} /></Card> : this.props.children; }
+}
+
+/* Official company logo: one component, one source file (00b_logo.js). Proportions are kept by sizing on height only. */
+function BrandLogo({ height = 40, chip, className }) {
+  return <img className={'brand-logo' + (chip ? ' logo-chip' : '') + (className ? ' ' + className : '')} src={BRAND_LOGO.url} alt="Apon Niketon Holdings logo" height={height} width={Math.round(height * BRAND_LOGO.w / BRAND_LOGO.h)} style={{ height: height, width: 'auto' }} />;
 }
 
 /* ---------- money + label helpers used across pages ---------- */

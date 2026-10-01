@@ -5,11 +5,11 @@
    ============================================================ */
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' }, { id: 'shareholders', label: 'Shareholders', icon: 'users' }, { id: 'sales', label: 'Share Sales', icon: 'tag' },
-  { id: 'units', label: 'Units', icon: 'building' }, { id: 'construction', label: 'Construction Contributions', icon: 'wrench' }, { id: 'expenses', label: 'Project Expenses', icon: 'receipt' },
+  { id: 'project', label: 'Project Details', icon: 'info' }, { id: 'units', label: 'Units', icon: 'building' }, { id: 'construction', label: 'Construction Contributions', icon: 'wrench' }, { id: 'expenses', label: 'Project Expenses', icon: 'receipt' },
   { id: 'payments', label: 'Payments', icon: 'card' }, { id: 'documents', label: 'Documents', icon: 'file' }, { id: 'reports', label: 'Reports', icon: 'chart' },
   { id: 'audit', label: 'Audit Log', icon: 'shield' }, { id: 'settings', label: 'Settings', icon: 'sliders' }
 ];
-const PAGES = { dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
+const PAGES = { project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
 function initialRoute() { let h = ''; try { h = (location.hash || '').replace('#', ''); } catch (e) { } return { name: NAV.some((n) => n.id === h) ? h : 'dashboard', params: {}, nonce: 0 }; }
 
 function usePopover() {
@@ -73,7 +73,7 @@ function ConfirmHost({ state, onDone }) {
 }
 
 function LoadingShell() {
-  return (<div className="shell"><aside className="side"><div className="brand"><div className="brand-co">{APP_CONFIG.companyName}</div><div className="brand-sys">{APP_CONFIG.systemName}</div></div>{NAV.map((n) => <div key={n.id} className="skel" style={{ height: 34, margin: '3px 4px' }} />)}</aside>
+  return (<div className="shell"><aside className="side"><div className="brand"><BrandLogo height={54} chip /><div className="brand-co">{APP_CONFIG.companyName}</div><div className="brand-sys">{APP_CONFIG.systemName}</div></div>{NAV.map((n) => <div key={n.id} className="skel" style={{ height: 34, margin: '3px 4px' }} />)}</aside>
     <main className="main"><div className="top"><div className="skel" style={{ height: 36, width: 260 }} /></div><div className="content"><div className="skel" style={{ height: 40, width: 220 }} /><div className="grid g-auto">{[1, 2, 3, 4, 5, 6].map((i) => <div key={i} className="skel" style={{ height: 88 }} />)}</div><div className="skel" style={{ height: 280 }} /><span className="sr" role="status">Loading project data</span></div></main></div>);
 }
 
@@ -105,7 +105,7 @@ function App() {
     <div className="shell">
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
       <aside className={'side' + (drawer ? ' open' : '')} aria-label="Main navigation">
-        <div className="brand"><div className="brand-co">{st.company_name}</div><div className="brand-sys">{APP_CONFIG.systemName}</div><div style={{ marginTop: 10, fontWeight: 600, color: 'var(--primary-text)', lineHeight: 1.3 }}>{st.project_name}</div></div>
+        <div className="brand"><BrandLogo height={54} chip /><div className="brand-co">{st.company_name}</div><div className="brand-sys">{APP_CONFIG.systemName}</div><div style={{ marginTop: 10, fontWeight: 600, color: 'var(--primary-text)', lineHeight: 1.3 }}>{st.project_name}</div></div>
         <nav className="nav">{NAV.map((n) => <Fragment key={n.id}>{n.id === 'audit' && <div className="nav-sep" />}<button type="button" aria-current={active === n.id ? 'page' : undefined} onClick={() => go(n.id)}><Icon n={n.icon} size={18} />{n.label}</button></Fragment>)}</nav>
         <div className="side-foot"><span className="demo-tag">Sample data</span><div style={{ marginTop: 8 }}>Prototype · {repo.kind}</div></div>
       </aside>

@@ -1,5 +1,5 @@
 const fs = require('fs'), path = require('path'), esbuild = require('esbuild');
-const order = ['00_core.js','01_seed.js','02_repo.js','03_calc.js','04_services.js','05_reports.js','06_kit.jsx','07_charts.jsx','07b_files.jsx','08_forms.jsx','09_pages_a.jsx','10_pages_b.jsx','11_pages_c.jsx','12_pages_d.jsx','12b_print.jsx','13_app.jsx'];
+const order = ['00_core.js','00b_logo.js','01_seed.js','02_repo.js','03_calc.js','04_services.js','05_reports.js','06_kit.jsx','07_charts.jsx','07b_files.jsx','08_forms.jsx','09_pages_a.jsx','10_pages_b.jsx','11_pages_c.jsx','12_pages_d.jsx','12b_print.jsx','12c_project.jsx','13_app.jsx'];
 const code = order.map(f => '/* ---- ' + f + ' ---- */\n' + fs.readFileSync(path.join('src', f), 'utf8')).join('\n');
 const out = esbuild.transformSync('(function(){\n' + code + '\n})();', { loader: 'jsx', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', target: 'es2019', charset: 'utf8' });
 const css = fs.readFileSync('src/styles.css', 'utf8');

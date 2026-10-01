@@ -379,7 +379,7 @@ function ReceiptModal({ kind, id, onClose }) {
   const tot = pc ? pc.total : bs ? bs.grand : 0, paid = pc ? pc.paid : bs ? bs.paid : 0, due = pc ? pc.due : bs ? bs.due : 0;
   return (<Modal title={'Receipt ' + p.receipt_no} sub={kind === 'share' ? 'Land share payment' : 'Construction contribution payment'} size="narrow" onClose={onClose} footer={<><Btn onClick={onClose}>Done</Btn><Btn variant="primary" icon="printer" onClick={() => open('printPreview', { doc: 'receipt', args: { kind: kind, id: id } })}>Print Receipt (A4)</Btn></>}>
     <div className="receipt">
-      <div style={{ textAlign: 'center' }}><div className="brand-co">{db.settings[0].company_name}</div><div className="brand-sys">{db.settings[0].project_name}</div></div>
+      <div style={{ textAlign: 'center' }}><BrandLogo height={44} chip /><div className="brand-co">{db.settings[0].company_name}</div><div className="brand-sys">{db.settings[0].project_name}</div></div>
       <div className="sumbox">
         <div className="sumrow"><span>Received from</span><span>{shName(db, p.shareholder_id)}</span></div>
         <div className="sumrow"><span>{kind === 'share' ? 'Booking' : 'Unit'}</span><span>{kind === 'share' ? b.code : u.code}</span></div>

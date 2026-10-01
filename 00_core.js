@@ -25,7 +25,8 @@ const BUILDING = [0, 1, 2, 3].map(function (f) { return { floor: f, label: f ===
 const VALID_UNIT_CODES = RES_FLOORS.reduce(function (a, f) { return a.concat(UNIT_LETTERS.map(function (l) { return f + l; })); }, []);
 function floorName(f) { const b = BUILDING.filter(function (x) { return x.floor === Number(f); })[0]; return b ? (f === 0 ? 'Ground Floor' : b.floor === 13 ? 'Roof Top' : b.label + ' Floor') : String(f); }
 const UNIT_STATUSES = ['Available','Reserved','Assigned','Under Construction','Completed','Handed Over'];
-const DOC_TYPES = ['NID','Photo','Share Agreement','Deed','Booking Document','Payment Receipt','Construction Agreement','Bill / Invoice','Other'];
+const PROJECT_IMAGE_CATEGORIES = ['Main', 'Building', 'Plan', 'Location', 'Interior', 'Amenities', 'Construction Progress', 'Other'];
+const DOC_TYPES = ['Project Image','NID','Photo','Share Agreement','Deed','Booking Document','Payment Receipt','Construction Agreement','Bill / Invoice','Other'];
 
 function pad(n, w) { return String(n).padStart(w || 2, '0'); }
 function isoDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }

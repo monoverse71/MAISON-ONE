@@ -42,11 +42,12 @@ function PersonAvatar({ name, docId, size }) {
 function ShAvatar({ sh, size }) { return <PersonAvatar name={sh.full_name} docId={sh.photo_doc_id} size={size} />; }
 
 /* Full-screen preview. Optional Replace / Remove when opened from a KYC slot. */
-function Lightbox({ docId, url, name, type, owner, ownerId, slot, label, canEdit, onClose }) {
+function Lightbox({ docId, url, name, type, owner, ownerId, slot, label, canEdit, actions, onClose }) {
   const { db } = useApp(); const doc = docId ? Calc.byId(db.documents, docId) : null; const fUrl = useFileUrl(doc);
   const src = url || fUrl, fname = name || (doc && doc.file_name) || '', ftype = type || (doc && doc.file_type) || '';
   const [zoom, setZoom] = useState(false); const tok = useRef({});
-  const kyc = useKycActions({ owner, ownerId, slot, label: label || 'document', has: !!doc, after: onClose });
+  const kyc0 = useKycActions({ owner, ownerId, slot, label: label || 'document', has: !!doc, after: onClose });
+  const ext = usePendingActions(actions, onClose), kyc = actions ? ext : kyc0, showEdit = canEdit && (slot || actions);
   useEffect(() => {
     MODAL_STACK.push(tok.current); const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
     const key = (e) => { if (e.key === 'Escape' && MODAL_STACK[MODAL_STACK.length - 1] === tok.current) onClose(); };
@@ -59,7 +60,7 @@ function Lightbox({ docId, url, name, type, owner, ownerId, slot, label, canEdit
       <div style={{ minWidth: 0 }}><b style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</b><span style={{ opacity: .75, fontSize: 12 }}>{label || (doc && doc.doc_type) || ''}{doc ? ' · ' + doc.code : ''}</span></div>
       <div className="chips">
         {img && src && <Btn size="sm" onClick={() => setZoom(!zoom)}>{zoom ? 'Fit to screen' : 'Actual size'}</Btn>}
-        {canEdit && slot && <><label className="btn btn-sm" htmlFor="lb-replace">Replace</label><input id="lb-replace" className="sr" type="file" accept="image/*,.pdf" onChange={(e) => kyc.upload(e.target.files && e.target.files[0])} />{doc && <Btn size="sm" variant="danger" busy={kyc.busy} onClick={kyc.remove}>Remove</Btn>}</>}
+        {showEdit && <><label className="btn btn-sm" htmlFor="lb-replace">Replace</label><input id="lb-replace" className="sr" type="file" accept="image/*,.pdf" onChange={(e) => kyc.upload(e.target.files && e.target.files[0])} />{doc && <Btn size="sm" variant="danger" busy={kyc.busy} onClick={kyc.remove}>Remove</Btn>}</>}
         <Btn size="sm" icon="x" onClick={onClose}>Close</Btn>
       </div>
     </div>
@@ -68,6 +69,14 @@ function Lightbox({ docId, url, name, type, owner, ownerId, slot, label, canEdit
         : img ? <img src={src} alt={fname} /> : <iframe title={fname} src={src} />}
     </div>
   </div>);
+}
+
+/* Replace / remove supplied by the caller (used by the project gallery). */
+function usePendingActions(actions, after) {
+  const [busy, setBusy] = useState(false);
+  return { busy: busy,
+    upload: async (f) => { if (!f || !actions) return; setBusy(true); const ok = await actions.replace(f); setBusy(false); if (ok && after) after(); },
+    remove: async () => { if (!actions) return; setBusy(true); const ok = await actions.remove(); setBusy(false); if (ok && after) after(); } };
 }
 
 /* Replace / remove shared by KYC cards and the lightbox. */

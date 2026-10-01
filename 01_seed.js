@@ -18,7 +18,13 @@ function createSeed() {
     { id: 'usr_acct', name: 'Demo Accountant', title: 'Accounts Officer', role: 'Accountant', email: 'accounts@demo.invalid', _demo: true },
     { id: 'usr_view', name: 'Demo Auditor', title: 'External Auditor', role: 'Viewer', email: 'auditor@demo.invalid', _demo: true }
   );
-  T.settings.push({ id: 'settings', project_name: APP_CONFIG.projectName, company_name: APP_CONFIG.companyName, total_shares: APP_CONFIG.totalShares, default_share_price: APP_CONFIG.defaultSharePrice, currency: 'BDT', _demo: true });
+  T.settings.push({ id: 'settings', project_name: APP_CONFIG.projectName, company_name: APP_CONFIG.companyName, total_shares: APP_CONFIG.totalShares, default_share_price: APP_CONFIG.defaultSharePrice, currency: 'BDT', _demo: true,
+    project_type: 'Residential apartments with commercial floors', location: 'Bashundhara R/A, Dhaka', land_area: '10 katha (sample figure)',
+    description: 'A multi-storey building with commercial floors from Ground to 3rd floor and residential apartments from 4th to 12th floor, with amenities on the roof top. Sample description: replace with the official project text.',
+    building_structure: 'Ground to 3rd floor commercial; 4th to 12th floor residential with 4 units per floor; roof top for amenities.', construction_start: monthDate(-9, 1), expected_completion: '2028-12-31',
+    handover_info: 'Planned handover: December 2028 (sample). Construction is funded by customer contributions paid at the client\'s own pace.',
+    contact_phone: '01700-000000', contact_email: 'info@example.com', contact_address: 'Project office, Bashundhara R/A, Dhaka (sample)',
+    notes: 'Sample project notes. Land share money, construction contributions and project expenses are kept in separate ledgers.' });
 
   /* ---- shareholders ---- */
   const SH = [
@@ -70,6 +76,11 @@ function createSeed() {
     }, D));
   });
   const unitId = function (code) { return T.units.filter(function (u) { return u.code === code; })[0].id; };
+
+  /* ---- project images (belong to the project, not to a shareholder) ---- */
+  [['Main', 'Main project view', 'main_view'], ['Location', 'Site and location', 'site_location'], ['Plan', 'Typical residential floor plan, 4 units', 'typical_floor_plan'], ['Construction Progress', 'Construction progress, foundation stage', 'progress_foundation']].forEach(function (p, i) {
+    T.documents.push(Object.assign({ id: id('doc', 7001 + i), code: 'DOC-' + pad(7001 + i, 4), doc_type: 'Project Image', slot: 'project_image', category: p[0], caption: p[1], sort: 1000 + i, related_type: 'project', related_id: 'project', file_name: p[2] + '.jpg', file_type: 'image/jpeg', size_bytes: 520000 + i * 41000, storage_path: 'documents/project/' + p[2] + '.jpg', uploaded_at: monthDate(-9, 3) + 'T10:0' + i + ':00', uploaded_by: 'usr_admin', description: p[1] }, D));
+  });
 
   /* ---- share bookings + payments ---- */
   let spN = 0;

@@ -18,8 +18,8 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   const toasts = () => page.locator('.toast').allTextContents();
   const shot = (n) => page.screenshot({ path: 'shots/' + n + '.png' });
   // pages
-  for (const n of ['Dashboard','Shareholders','Share Sales','Units','Construction Contributions','Project Expenses','Payments','Documents','Reports','Audit Log','Settings']) { await nav(n); if (await page.locator('text=This page could not be shown').count()) ok(false, 'page ' + n); }
-  ok(true, 'all 11 pages render');
+  for (const n of ['Dashboard','Shareholders','Share Sales','Units','Construction Contributions','Project Expenses','Payments','Documents','Reports','Audit Log','Settings','Project Details']) { await nav(n); if (await page.locator('text=This page could not be shown').count()) ok(false, 'page ' + n); }
+  ok(true, 'all 12 pages render (incl. Project Details)');
   // 1 shareholder + six uploads
   await nav('Shareholders'); await page.getByRole('button', { name: /Add shareholder/ }).click();
   await dlg().getByLabel(/Full name/).fill('Rahim Uddin Test'); await dlg().getByLabel(/^Phone number/).fill('01766-555123'); await dlg().getByLabel(/NID number/).fill('1987654321');
@@ -131,6 +131,37 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   await nav('Reports'); for (const id of ['Construction Contribution', 'Construction Due']) { const b = page.locator('[role=tab]', { hasText: id }).first(); if (await b.count()) { await b.click(); await page.waitForTimeout(200); } }
   await page.getByRole('button', { name: 'Print A4' }).click(); await page.waitForSelector('.pv .paper'); await shot('14_report_print'); await pdf('report'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   ok(true, 'reports print');
+
+  // ---- official logo ----
+  const lg = await page.evaluate(() => { const i = document.querySelector('aside .brand img.brand-logo'); return i ? { nw: i.naturalWidth, nh: i.naturalHeight, w: i.clientWidth - parseFloat(getComputedStyle(i).paddingLeft) - parseFloat(getComputedStyle(i).paddingRight), h: i.clientHeight - parseFloat(getComputedStyle(i).paddingTop) - parseFloat(getComputedStyle(i).paddingBottom), ok: i.complete } : null; });
+  ok(lg && lg.ok && lg.nw > 0 && Math.abs(lg.w / lg.h - lg.nw / lg.nh) < 0.02, 'sidebar shows the official logo, proportions kept (' + (lg && (lg.w / lg.h).toFixed(3) + ' vs ' + (lg.nw / lg.nh).toFixed(3)) + ')');
+  ok(await page.locator('text=/^AN$/').count() === 0, 'no text "AN" mark left in the app');
+  await nav('Dashboard'); await page.locator('aside nav button', { hasText: 'Payments' }).click(); await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print receipt/ }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(500);
+  const pl = await page.evaluate(() => { const i = document.querySelector('.pv .paper .doc-logo'); const r = i.getBoundingClientRect(); return { ok: i.complete && i.naturalWidth > 0, ratio: (r.width / r.height) / (i.naturalWidth / i.naturalHeight) }; });
+  ok(pl.ok && Math.abs(pl.ratio - 1) < 0.02, 'A4 header shows the official logo, undistorted (ratio ' + pl.ratio.toFixed(3) + ')'); await pdf('receipt_with_logo'); await shot('15_receipt_logo'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
+  // ---- project details ----
+  await nav('Project Details'); await page.waitForSelector('text=Project images');
+  ok(await page.locator('.pgrid .pimg img').count() === 4, 'project page shows 4 sample image thumbnails');
+  ok((await page.locator('main').innerText()).includes('36') && (await page.locator('main').innerText()).includes('1,440 sq ft'), 'project facts reuse live data: 36 units, 1,440 sq ft'); await shot('16_project');
+  await page.getByRole('button', { name: /^Add images/ }).first().click();
+  await dlg().locator('input[type=file]').setInputFiles([files[0], files[1], files[2]]); await page.waitForTimeout(300);
+  ok(await dlg().locator('.pq-i img').count() === 3, 'three images staged with previews');
+  await dlg().getByLabel('Image title').first().fill('North elevation'); await dlg().getByLabel('Category').first().selectOption('Building');
+  await dlg().getByRole('button', { name: /Add 3 images/ }).click(); await page.waitForTimeout(1500);
+  ok(await page.locator('.pgrid .pimg img').count() === 7, 'multiple images uploaded (4 -> 7) and thumbnails appear'); ok((await page.locator('.pgrid').innerText()).includes('North elevation'), 'caption shown'); await shot('17_project_gallery');
+  await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).locator('.thumb').click(); await page.waitForSelector('.lb img');
+  ok(await page.locator('.lb').getByText('Replace').count() === 1 && await page.locator('.lb').getByRole('button', { name: 'Remove' }).count() === 1, 'project image opens in the existing lightbox with Replace and Remove'); await page.keyboard.press('Escape');
+  await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).locator('input[type=file]').setInputFiles(files[6]); await page.waitForTimeout(900);
+  ok((await toasts()).join(' ').includes('Image replaced') && await page.locator('.pgrid .pimg img').count() === 7, 'replace works (still 7, old one archived)');
+  await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).getByRole('button', { name: 'Details' }).click(); await dlg().getByLabel('Title / caption').fill('North elevation (final)'); await dlg().getByRole('button', { name: 'Save' }).click(); await page.waitForTimeout(700);
+  ok((await page.locator('.pgrid').innerText()).includes('North elevation (final)'), 'caption edit works');
+  await page.locator('.pgrid .pimg', { hasText: 'North elevation (final)' }).getByRole('button', { name: 'Remove' }).click(); await dlg().getByRole('textbox').fill('Test removal'); await dlg().getByRole('button', { name: 'Remove' }).click(); await page.waitForTimeout(800);
+  ok(await page.locator('.pgrid .pimg img').count() === 6, 'remove works (7 -> 6, archived with reason)');
+  await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel('Land area').fill('12 katha (test)'); await dlg().getByLabel('Construction start date').fill('2026-01-15'); await dlg().getByLabel(/Expected completion/).fill('2029-06-30'); await dlg().getByLabel('Building structure').fill('G+12 with roof top (test)'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(700);
+  { const t = await page.locator('main').innerText(); ok(t.includes('12 katha (test)') && t.includes('15 Jan 2026') && t.includes('30 Jun 2029') && t.includes('G+12 with roof top (test)'), 'project information edit works (area, dates, structure)'); ok(t.includes('Total floors') && t.includes('Commercial floors') && t.includes('Residential floors') && t.includes('Total residential units'), 'all requested information rows are shown'); }
+  await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel(/Expected completion/).fill('2020-01-01'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(300); ok(await dlg().locator('text=Completion cannot be before the start date').count() === 1, 'completion before start is rejected'); await page.keyboard.press('Escape');
+  await nav('Audit Log'); ok((await page.locator('main').innerText()).includes('project image'), 'project image changes are in the audit log');
+  await nav('Project Details'); await page.getByRole('button', { name: /Print project sheet/ }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(700); await shot('18_project_print'); await pdf('project_sheet'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   { const cp = require('child_process'); let bad = 0; for (const f of fs.readdirSync('out').filter(x => x.endsWith('.pdf'))) { const o = cp.execSync('pdfinfo out/' + f).toString(); const pg = +/Pages:\s+(\d+)/.exec(o)[1]; const sz = /Page size:\s+(.*)/.exec(o)[1]; if (pg !== 1) bad++; console.log((pg === 1 ? 'ok   ' : 'FAIL ') + 'one page: ' + f + ' -> ' + pg + ' page, ' + sz); } ok(bad === 0, 'every printed document is exactly one A4 page'); }
   console.log('errors: ' + (errors.length ? '\n' + errors.join('\n') : 'none')); await browser.close();
 })().catch(e => { console.error('SCRIPT FAIL', e.message.split('\n').slice(0, 6).join('\n')); process.exit(1); });

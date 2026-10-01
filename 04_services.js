@@ -31,7 +31,7 @@ function createServices(ctx) {
     checkFile(file);
     const id = uid('doc'), path = 'documents/' + o.related_id + '/' + id + '_' + file.name.replace(/[^\w.\-]+/g, '_');
     const up = await MockStorage.upload(file, path);
-    return ins('documents', { id: id, code: o.code || nextDocCode(), doc_type: o.doc_type, slot: o.slot || null, related_type: o.related_type, related_id: o.related_id, file_name: file.name, file_type: up.type, size_bytes: up.size, storage_path: up.path, uploaded_at: nowIso(), uploaded_by: getUser().id, description: o.description || '' });
+    return ins('documents', Object.assign({ id: id, code: o.code || nextDocCode(), doc_type: o.doc_type, slot: o.slot || null, related_type: o.related_type, related_id: o.related_id, file_name: file.name, file_type: up.type, size_bytes: up.size, storage_path: up.path, uploaded_at: nowIso(), uploaded_by: getUser().id, description: o.description || '' }, o.extra || {}));
   }
   /* Photo / NID slots for shareholders and nominees. Replacing or removing archives the earlier document; nothing is deleted. */
   const KYC_SLOTS = ['photo', 'nid_front', 'nid_back'];
@@ -266,6 +266,47 @@ function createServices(ctx) {
   S.archiveDocument = async function (id, reason) {
     guard('archive'); const doc = Calc.byId(getDb().documents, id);
     await commit([{ op: 'archive', table: 'documents', id: id, meta: { by: getUser().id, reason: reason } }, audit('Archived record', 'document', id, 'Archived document ' + doc.file_name, { reason: reason })]);
+  };
+
+  /* ---------- project details + project images ----------
+     Images are rows in `documents` (related_type 'project'), so they use the same storage adapter, audit trail and archive-only removal as every other file. */
+  const PROJECT_KEYS = ['project_name', 'project_type', 'location', 'land_area', 'description', 'handover_info', 'building_structure', 'construction_start', 'expected_completion', 'contact_phone', 'contact_email', 'contact_address', 'notes'];
+  const projectImages = function (db) { return db.documents.filter(function (d) { return live(d) && d.related_type === 'project' && d.slot === 'project_image'; }); };
+  S.updateProjectDetails = async function (f) {
+    guard('write'); const cur = getDb().settings[0], patch = {};
+    if (!String(f.project_name || '').trim()) throw new AppError('Enter the project name.', 'Missing project name', 'VALIDATION');
+    if (f.construction_start && f.expected_completion && f.expected_completion < f.construction_start) throw new AppError('Expected completion cannot be before the construction start date.', 'Check the dates', 'VALIDATION');
+    if (f.contact_email && !/^\S+@\S+\.\S+$/.test(f.contact_email)) throw new AppError('Enter a valid contact email.', 'Invalid email', 'VALIDATION');
+    PROJECT_KEYS.forEach(function (k) { if (f[k] != null) patch[k] = String(f[k]).trim(); });
+    const d = diff(cur, patch, Object.keys(patch)); if (!d.changed.length) throw new AppError('Nothing was changed.', 'No changes', 'NO_CHANGE');
+    await commit([{ op: 'update', table: 'settings', id: 'settings', patch: patch }, audit('Edited project details', 'settings', 'settings', 'Changed project details: ' + d.changed.join(', '), { before: d.before, after: d.after })]);
+  };
+  S.addProjectImages = async function (items) {
+    guard('write'); if (!items || !items.length) throw new AppError('Choose at least one image.', 'No file', 'VALIDATION');
+    items.forEach(function (it) { checkFile(it.file); if (!/^image\//.test(it.file.type)) throw new AppError(it.file.name + ' is not an image. Project images must be JPG, PNG or WebP.', 'File type not accepted', 'VALIDATION'); });
+    const ops = []; let n = Date.now();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], cat = it.category || 'Other', cap = String(it.title || '').trim() || it.file.name.replace(/\.[^.]+$/, '');
+      const d = await storeFile(it.file, { doc_type: 'Project Image', slot: 'project_image', related_type: 'project', related_id: 'project', description: cap, extra: { category: cat, caption: cap, sort: n++ } });
+      ops.push(d, audit('Added project image', 'document', d.row.id, 'Added project image "' + cap + '" (' + cat + ')', {}));
+    }
+    await commit(ops); return ops.length / 2;
+  };
+  S.updateProjectImage = async function (id, f) {
+    guard('write'); const doc = Calc.byId(getDb().documents, id); if (!doc || doc.slot !== 'project_image') throw new AppError('Project image not found.', 'Not found', 'NOT_FOUND');
+    const patch = { caption: String(f.title || '').trim() || doc.caption, category: f.category || doc.category, description: String(f.title || '').trim() || doc.caption };
+    const d = diff(doc, patch, ['caption', 'category']); if (!d.changed.length) throw new AppError('Nothing was changed.', 'No changes', 'NO_CHANGE');
+    await commit([{ op: 'update', table: 'documents', id: id, patch: patch }, audit('Edited project image', 'document', id, 'Edited project image details: ' + d.changed.join(', '), { before: d.before, after: d.after })]);
+  };
+  S.replaceProjectImage = async function (id, file) {
+    guard('write'); const doc = Calc.byId(getDb().documents, id); if (!doc || doc.slot !== 'project_image') throw new AppError('Project image not found.', 'Not found', 'NOT_FOUND');
+    if (file && !/^image\//.test(file.type)) throw new AppError('Project images must be JPG, PNG or WebP.', 'File type not accepted', 'VALIDATION');
+    const d = await storeFile(file, { doc_type: 'Project Image', slot: 'project_image', related_type: 'project', related_id: 'project', description: doc.caption, extra: { category: doc.category, caption: doc.caption, sort: doc.sort } });
+    await commit([d, { op: 'archive', table: 'documents', id: id, meta: { by: getUser().id, reason: 'Replaced by ' + d.row.code } }, audit('Replaced project image', 'document', d.row.id, 'Replaced project image "' + doc.caption + '" with ' + d.row.file_name, { reason: 'Replaced ' + doc.file_name })]); return d.row;
+  };
+  S.removeProjectImage = async function (id, reason) {
+    guard('write'); const doc = Calc.byId(getDb().documents, id); if (!doc || doc.slot !== 'project_image') throw new AppError('Project image not found.', 'Not found', 'NOT_FOUND');
+    await commit([{ op: 'archive', table: 'documents', id: id, meta: { by: getUser().id, reason: reason || 'Removed' } }, audit('Removed project image', 'document', id, 'Removed project image "' + doc.caption + '"', { reason: reason || 'Removed by user' })]);
   };
 
   /* ---------- settings ---------- */

@@ -39,7 +39,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note }) {
   useEffect(() => { window.dispatchEvent(new CustomEvent('docfit', { detail: fp.scale })); }, [fp.scale]);
   return (<article className={'doc' + (landscape ? ' land' : '')} ref={fp.doc} data-fit={fp.scale}>
     <header className="doc-head">
-      <div className="doc-brand"><div className="doc-mark" aria-hidden="true">AN</div><div><div className="doc-co">{st.company_name}</div><div className="doc-proj">{st.project_name}</div></div></div>
+      <div className="doc-brand"><img className="doc-logo" src={BRAND_LOGO.url} alt="Apon Niketon Holdings logo" /><div><div className="doc-co">{st.company_name}</div><div className="doc-proj">{st.project_name}</div></div></div>
       <div className="doc-id"><div className="doc-title">{title}</div>{docNo && <div>No. <b className="mono">{docNo}</b></div>}<div>Date: <b>{fmtDate(date || TODAY)}</b></div></div>
     </header>
     <div className="doc-body" ref={fp.body}><div className="doc-fit" ref={fp.fit}>{children}</div></div>
@@ -280,6 +280,22 @@ const PRINT_DOCS = {
         <Sect title="Payment"><DT cols={[{ l: 'Voucher no.', k: 'c' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: () => <b>{fmtMoney(e.amount)}</b> }]} rows={[{ c: e.code, d: fmtDate(e.expense_date), m: e.method, x: e.reference || '—' }]} /><div className="words"><span>Amount in words</span><b>{amountInWords(Math.abs(e.amount))}</b></div>{e.remarks && <p className="dnote">Remarks: {e.remarks}</p>}{bill && <p className="dnote">Bill on file: {bill.file_name}</p>}</Sect>
         <div className="dmeta">Entered by {userName(db, e.created_by)} on {fmtDateTime(e.created_at)}</div>
         <Sigs labels={[['Prepared by', userName(db, e.created_by)], ['Approved by', 'Authorised signatory'], ['Received by', e.payee_name || 'Payee']]} />
+      </DocFrame>);
+    }
+  },
+
+  /* Project sheet: information, structure and every project image on one page */
+  project: {
+    title: () => 'Project details',
+    render: (ctx, a) => {
+      const db = ctx.db, st = db.settings[0], units = db.units.filter(live), imgs = projectImagesOf(db);
+      return (<DocFrame ctx={ctx} title="Project details" docNo={'PD-' + TODAY.replace(/-/g, '')} date={TODAY}>
+        <Sect title="Project"><KV cols={2} items={[['Project name', <b>{st.project_name}</b>], ['Project type', st.project_type], ['Location', st.location], ['Developer / company', st.company_name], ['Land area', st.land_area], ['Building structure', st.building_structure], ['Total floors', TOTAL_FLOORS + ' plus roof top'], ['Commercial floors', COMM_FLOORS], ['Residential floors', RES_FLOORS.length], ['Total residential units', units.length], ['Unit size', units.length ? units[0].size_sqft.toLocaleString('en-US') + ' sq ft each' : ''], ['Construction start', st.construction_start ? fmtDate(st.construction_start) : ''], ['Expected completion', st.expected_completion ? fmtDate(st.expected_completion) : '']]} /></Sect>
+        <Sect title="Description"><p className="dnote" style={{ fontSize: '9.5pt', color: '#1F2937' }}>{st.description || '—'}</p></Sect>
+        <Sect title="Building structure"><DT cols={[{ l: 'Floor', k: 'f' }, { l: 'Use', k: 'u' }, { l: 'Units', r: true, k: 'n' }]} rows={BUILDING.map((b) => ({ f: b.label, u: b.use, n: b.units || '—' }))} foot={{ 0: 'Total', 2: units.length }} /></Sect>
+        <Sect title="Construction, handover and contact"><KV cols={2} items={[['Construction / handover', st.handover_info], ['Contact phone', st.contact_phone], ['Contact email', st.contact_email], ['Contact address', st.contact_address]]} /></Sect>
+        <Sect title={'Project images (' + imgs.length + ')'}>{imgs.length ? <div className="dimg-row">{imgs.map((d) => <DocImg key={d.id} doc={d} label={d.caption + ' · ' + d.category} />)}</div> : <p className="dnote">No project images added.</p>}</Sect>
+        {st.notes && <Sect title="Notes"><p className="dnote">{st.notes}</p></Sect>}
       </DocFrame>);
     }
   },
