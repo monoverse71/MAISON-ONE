@@ -65,7 +65,7 @@ function Lightbox({ docId, url, name, type, owner, ownerId, slot, label, canEdit
       </div>
     </div>
     <div className={'lb-body' + (zoom ? ' zoom' : '')} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      {!src ? <div className="lb-empty"><Icon n="eye" size={34} /><div>No file is stored for this sample record.</div></div>
+      {!src ? <div className="lb-empty"><Icon n="eye" size={34} /><div>No file is stored for this record.</div></div>
         : img ? <img src={src} alt={fname} /> : <iframe title={fname} src={src} />}
     </div>
   </div>);

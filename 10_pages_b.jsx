@@ -31,7 +31,7 @@ function SalesPage({ newBooking }) {
     ]} /></div>) }
   ];
   return (<>
-    <PageHead title="Share sales" sub="Land share bookings and what has been collected against each. Construction money is not mixed in here." flow="in" demo actions={w && <Btn variant="primary" icon="plus" onClick={() => open('booking', {})}>New share booking</Btn>} />
+    <PageHead title="Share sales" sub="Land share bookings and what has been collected against each. Construction money is not mixed in here." flow="in" actions={w && <Btn variant="primary" icon="plus" onClick={() => open('booking', {})}>New share booking</Btn>} />
     <div className="grid g-auto">
       <Stat label="Shares sold" value={sold + ' of ' + settings.total_shares} sub={(settings.total_shares - sold) + ' still available'} />
       <Stat label="Total booked value" value={fmtCompact(totals.value)} title={fmtMoney(totals.value)} sub="After discounts" />
@@ -73,7 +73,7 @@ function UnitsPage() {
   const byFloor = (fl) => all.filter((u) => u.floor === fl).sort((a, b) => cmpStr(a.code, b.code));
   const pick = (u) => w ? open('unit', { unit: u }) : (u.shareholder_id && go('profile', { id: u.shareholder_id }));
   return (<>
-    <PageHead title="Units" sub="Fixed building plan: Ground to 3rd floor commercial, 4th to 12th floor residential (4 units per floor, 1,440 sq ft each), roof top for amenities." demo />
+    <PageHead title="Units" sub="Fixed building plan: Ground to 3rd floor commercial, 4th to 12th floor residential (4 units per floor, 1,440 sq ft each), roof top for amenities." />
     <div className="grid g-auto">
       <Stat label="Residential units" value={resUnits} sub="9 floors × 4 units" />
       <Stat label="Unit size" value="1,440 sq ft" sub="Every residential unit" />
@@ -121,7 +121,7 @@ function PlanList() {
     { key: 'actions', label: 'Actions', align: 'r', render: (r) => (<div className="act"><Btn size="sm" icon="eye" onClick={(e) => { e.stopPropagation(); go('construction', { planId: r.id }); }}>Open</Btn>{w && r.due > 0.004 && <Btn size="sm" onClick={(e) => { e.stopPropagation(); open('consPayment', { planId: r.id }); }}>Add payment</Btn>}<RowMenu items={[{ label: 'Print statement (A4)', icon: 'printer', onClick: () => open('printPreview', { doc: 'consStatement', args: { planId: r.id } }) }]} /></div>) }
   ];
   return (<>
-    <PageHead title="Construction contributions" sub="One total per shareholder and unit. Clients pay any amount, whenever they choose. Separate from land share payments." flow="in" demo actions={<>{rows.length > 0 && <Btn icon="printer" onClick={() => open('printPreview', { doc: 'report', args: { reportId: 'cons_contribution' } })}>Print summary</Btn>}{w && <Btn variant="primary" icon="plus" onClick={() => open('plan', {})}>Set total contribution</Btn>}</>} />
+    <PageHead title="Construction contributions" sub="One total per shareholder and unit. Clients pay any amount, whenever they choose. Separate from land share payments." flow="in" actions={<>{rows.length > 0 && <Btn icon="printer" onClick={() => open('printPreview', { doc: 'report', args: { reportId: 'cons_contribution' } })}>Print summary</Btn>}{w && <Btn variant="primary" icon="plus" onClick={() => open('plan', {})}>Set total contribution</Btn>}</>} />
     <div className="grid g-auto">
       <Stat label="Total contributions set" value={fmtCompact(t.total)} title={fmtMoney(t.total)} sub={all.length + ' units'} />
       <Stat label="Total paid" value={fmtCompact(t.paid)} title={fmtMoney(t.paid)} flow="in" sub={t.total ? fmtPct(t.paid / t.total * 100) + ' of total' : ''} />

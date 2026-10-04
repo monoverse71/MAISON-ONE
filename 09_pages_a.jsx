@@ -44,26 +44,30 @@ function Timeline({ logs, empty }) {
 function DashboardPage() {
   const { db, go } = useApp();
   const d = useMemo(() => Calc.dashboard(db), [db]);
-  const avail = d.totalShares - d.sharesSold, active = db.shareholders.filter((s) => live(s) && s.status === 'Active').length;
+  const avail = d.availableShares, active = db.shareholders.filter((s) => live(s) && s.status === 'Active').length;
   const rDue = (u) => u.status === 'Overdue' ? <span className="badge t-bad">{daysBetween(u.due_date, TODAY)} days overdue</span> : <span className="muted">{daysBetween(TODAY, u.due_date) === 0 ? 'Due today' : 'in ' + daysBetween(TODAY, u.due_date) + ' days'}</span>;
   const overviewItems = { inn: [{ label: 'Land share collection', value: d.shareCollected, color: 'var(--s-share)' }, { label: 'Construction contributions', value: d.consCollected, color: 'var(--s-cons)' }], out: [{ label: 'Project construction expenses', value: d.expense, color: 'var(--s-out)' }] };
   const scale = Math.max(d.shareCollected, d.consCollected, d.expense, d.shareDue + d.consDue, 1);
   return (<>
-    <PageHead title="Dashboard" sub={'Money in and money out for ' + db.settings[0].project_name + '.'} demo={db.users && db.settings[0]._demo} actions={<><Btn icon="tag" onClick={() => go('sales', { newBooking: true })}>New share booking</Btn><Btn icon="receipt" onClick={() => go('expenses', { newExpense: true })}>Add project expense</Btn></>} />
+    <PageHead title="Dashboard" sub={'Money in and money out for ' + db.settings[0].project_name + '.'} actions={<><Btn icon="tag" onClick={() => go('sales', { newBooking: true })}>New share booking</Btn><Btn icon="receipt" onClick={() => go('expenses', { newExpense: true })}>Add project expense</Btn></>} />
+    {!d.priceSet && <Note tone="warn">The share price has not been configured yet. Share values show as ৳0 and new bookings are blocked until an Admin sets the price in <button type="button" className="link" onClick={() => go('settings')}>Settings &rarr; Share Configuration</button>.</Note>}
     <div className="grid g-auto">
       <Stat label="Total shareholders" value={d.shareholders} sub={active + ' active'} />
-      <Stat label="Total shares sold" value={d.sharesSold} sub={'of ' + d.totalShares + ' · ' + avail + ' available'} />
-      <Stat label="Total share value" value={fmtCompact(d.shareValue)} title={fmtMoney(d.shareValue)} sub="After discounts" />
-      <Stat label="Total share collection" value={fmtCompact(d.shareCollected)} title={fmtMoney(d.shareCollected)} flow="in" sub={d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + '% of share value' : ''} />
-      <Stat label="Total share due" value={fmtCompact(d.shareDue)} title={fmtMoney(d.shareDue)} sub="Receivable from shareholders" />
-      <Stat label="Construction contributions" value={fmtCompact(d.consCollected)} title={fmtMoney(d.consCollected)} flow="in" sub={'of ' + fmtCompact(d.consPlanned) + ' planned'} />
+      <Stat label="Total shares" value={d.totalShares} sub="Fixed project total" />
+      <Stat label="Shares sold" value={d.sharesSold} sub={d.sharesSold ? 'of ' + d.totalShares : 'No bookings yet'} />
+      <Stat label="Shares available" value={avail} sub="Total minus sold" />
+      <Stat label="Share price" value={fmtMoney(d.sharePrice)} sub={d.priceSet ? 'Per share, from Settings' : 'Not configured yet'} />
+      <Stat label="Total share value" value={fmtCompact(d.totalShareValue)} title={fmtMoney(d.totalShareValue)} sub={d.priceSet ? d.totalShares + ' shares x ' + fmtMoney(d.sharePrice) : 'Needs a share price'} />
+      <Stat label="Share collection" value={fmtCompact(d.shareCollected)} title={fmtMoney(d.shareCollected)} flow="in" sub={d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + '% of sold share value' : 'No payments yet'} />
+      <Stat label="Share due" value={fmtCompact(d.shareDue)} title={fmtMoney(d.shareDue)} sub="Receivable from shareholders" />
+      <Stat label="Construction contributions" value={fmtCompact(d.consCollected)} title={fmtMoney(d.consCollected)} flow="in" sub={d.consPlanned ? 'of ' + fmtCompact(d.consPlanned) + ' planned' : 'None set yet'} />
       <Stat label="Construction contribution due" value={fmtCompact(d.consDue)} title={fmtMoney(d.consDue)} sub="Receivable on plans" />
-      <Stat label="Project construction expense" value={fmtCompact(d.expense)} title={fmtMoney(d.expense)} flow="out" sub={d.pendingApprovalAmount ? fmtCompact(d.pendingApprovalAmount) + ' awaiting approval' : 'All approved'} />
+      <Stat label="Project construction expense" value={fmtCompact(d.expense)} title={fmtMoney(d.expense)} flow="out" sub={d.pendingApprovalAmount ? fmtCompact(d.pendingApprovalAmount) + ' awaiting approval' : d.expense ? 'All approved' : 'No expenses yet'} />
       <Stat label="Available project fund" value={fmtCompact(d.fund)} title={fmtMoney(d.fund)} flow="net" sub="Collections minus expenses" />
     </div>
     <div className="grid g2">
       <Card title="Financial overview" sub="Cash received, cash spent and what is still owed">
-        <div className="io-cols">
+        {!(d.shareCollected || d.consCollected || d.expense || d.receivables) ? <Empty title="No transactions yet" text="Collections, expenses and receivables will appear here once records are added." icon="chart" /> : <><div className="io-cols">
           <div><h4><Flow dir="in" /></h4><HBars stacked items={overviewItems.inn} max={scale} /></div>
           <div><h4><Flow dir="out" /></h4><HBars stacked items={overviewItems.out} max={scale} /></div>
         </div>
@@ -71,10 +75,10 @@ function DashboardPage() {
           <div className="sect-t">Outstanding receivables · {fmtMoney(d.receivables)}</div>
           <Progress parts={[{ pct: d.shareDue / (d.receivables || 1) * 100, color: 'var(--s-share)', label: 'Share due' }, { pct: d.consDue / (d.receivables || 1) * 100, color: 'var(--s-cons)', label: 'Construction due' }]} />
           <div className="legend" style={{ marginTop: 8 }}><span><i style={{ background: 'var(--s-share)' }} />Share due {fmtMoney(d.shareDue)}</span><span><i style={{ background: 'var(--s-cons)' }} />Construction due {fmtMoney(d.consDue)}</span></div>
-        </div>
+        </div></>}
       </Card>
       <Card title="Payment collection trend" sub="Last six months">
-        <TrendChart data={d.trend} series={[{ key: 'share', label: 'Share collection', color: 'var(--s-share)' }, { key: 'construction', label: 'Construction collection', color: 'var(--s-cons)' }, { key: 'expense', label: 'Project expenses', color: 'var(--s-out)', dash: '5 4' }]} />
+        {!d.trend.some((t) => t.share || t.construction || t.expense) ? <Empty title="No transactions yet" text="The monthly trend appears after the first payment or expense." icon="chart" /> : <TrendChart data={d.trend} series={[{ key: 'share', label: 'Share collection', color: 'var(--s-share)' }, { key: 'construction', label: 'Construction collection', color: 'var(--s-cons)' }, { key: 'expense', label: 'Project expenses', color: 'var(--s-out)', dash: '5 4' }]} />}
       </Card>
     </div>
     <div className="grid g2">
@@ -92,13 +96,13 @@ function DashboardPage() {
           cols={[{ key: 'who', label: 'Who', render: (u) => <div className="cell-name"><div><b>{u.who}</b><span>{u.what}</span></div></div> }, { key: 'due_date', label: 'When', render: (u) => <div>{fmtDate(u.due_date)}<div>{rDue(u)}</div></div> }, { key: 'amount', label: 'Amount', align: 'r', render: (u) => M(u.amount) }]} />
       </Card>
       <Card title="Recent customer payments" flush actions={<Btn size="sm" variant="ghost" onClick={() => go('payments')}>All payments</Btn>}>
-        <DataTable pageSize={6} rows={d.recentPayments} empty={{ title: 'No payments yet', icon: 'card' }}
+        <DataTable pageSize={6} rows={d.recentPayments} empty={{ title: 'No transactions yet', text: 'Share and construction payments will be listed here.', icon: 'card' }}
           cols={[{ key: 'who', label: 'Received from', render: (r) => <div className="cell-name"><div><b>{r.who}</b><span>{r.receipt} · {fmtDate(r.date)} · {r.method}</span></div></div> }, { key: 'type', label: 'Type', render: (r) => <TypePill type={r.type === 'Land Share' ? 'share' : 'cons'} /> }, { key: 'amount', label: 'Amount', align: 'r', render: (r) => M(r.amount) }]} />
       </Card>
     </div>
     <div className="grid g2">
       <Card title="Recent share sales" flush actions={<Btn size="sm" variant="ghost" onClick={() => go('sales')}>All sales</Btn>}>
-        <DataTable pageSize={6} rows={d.recentBookings.map((b) => ({ id: b.id, b: b, s: Calc.bookingSummary(db, b) }))} onRowClick={(r) => go('profile', { id: r.b.shareholder_id })}
+        <DataTable pageSize={6} empty={{ title: 'No bookings yet', text: 'Share bookings will be listed here.', icon: 'tag' }} rows={d.recentBookings.map((b) => ({ id: b.id, b: b, s: Calc.bookingSummary(db, b) }))} onRowClick={(r) => go('profile', { id: r.b.shareholder_id })}
           cols={[{ key: 'b', label: 'Booking', render: (r) => <div className="cell-name"><div><b>{shName(db, r.b.shareholder_id)}</b><span>{r.b.code} · {fmtDate(r.b.booking_date)}</span></div></div> }, { key: 'q', label: 'Shares', align: 'r', render: (r) => r.b.quantity }, { key: 'g', label: 'Grand total', align: 'r', render: (r) => M(r.s.grand) }, { key: 'st', label: 'Status', render: (r) => <Status v={r.s.status} /> }]} />
       </Card>
     </div>
@@ -140,7 +144,7 @@ function ShareholdersPage() {
     ]} /></div>) }
   ];
   return (<>
-    <PageHead title="Shareholders" sub="Every person who holds land shares in the project, with land share and construction money kept apart." demo actions={w && <Btn variant="primary" icon="plus" onClick={() => open('shareholder', {})}>Add shareholder</Btn>} />
+    <PageHead title="Shareholders" sub="Every person who holds land shares in the project, with land share and construction money kept apart." actions={w && <Btn variant="primary" icon="plus" onClick={() => open('shareholder', {})}>Add shareholder</Btn>} />
     <Card flush>
       <div className="toolbar"><SearchBox value={q} onChange={setQ} placeholder="Search name, ID, phone, NID" /><Chips options={opts} value={flt} onChange={setFlt} /></div>
       <DataTable cols={cols} rows={rows} pageSize={10} onRowClick={(r) => go('profile', { id: r.id })} empty={{ title: q || flt !== 'all' ? 'No shareholders match' : 'No shareholders yet', text: q || flt !== 'all' ? 'Clear the search or choose another filter.' : 'Add the first shareholder to get started.', icon: 'users', action: w && !q && flt === 'all' ? <Btn variant="primary" icon="plus" onClick={() => open('shareholder', {})}>Add shareholder</Btn> : null }} />

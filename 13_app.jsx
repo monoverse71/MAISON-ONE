@@ -58,7 +58,7 @@ function UserMenu() {
   const { db, user, setUserId, toast, go } = useApp(); const [open, setOpen, ref] = usePopover();
   return (<div ref={ref} style={{ position: 'relative' }}>
     <button type="button" className="user-btn" aria-expanded={open} aria-label="Account menu" onClick={() => setOpen(!open)}><Avatar name={user.name} size={30} /><span className="ub-t" style={{ textAlign: 'left', lineHeight: 1.2 }}><b style={{ display: 'block', fontSize: 13 }}>{user.name}</b><span className="muted" style={{ fontSize: 11.5 }}>{user.role}</span></span></button>
-    {open && <div className="pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }}><div className="pop-h">Switch demo user</div>{db.users.map((u) => <button key={u.id} type="button" className="pop-i" onClick={() => { setUserId(u.id); setOpen(false); toast.info('Signed in as ' + u.name, u.role + ' access'); }}><Avatar name={u.name} size={28} /><div><div style={{ fontWeight: 600 }}>{u.name}{u.id === user.id ? ' ✓' : ''}</div><div className="muted" style={{ fontSize: 12 }}>{u.title} · {u.role}</div></div></button>)}<div className="nav-sep" /><button type="button" className="pop-i" onClick={() => { setOpen(false); go('settings'); }}><Icon n="sliders" size={15} />Settings</button></div>}
+    {open && <div className="pop" style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }}><div className="pop-h">Switch user</div>{db.users.map((u) => <button key={u.id} type="button" className="pop-i" onClick={() => { setUserId(u.id); setOpen(false); toast.info('Signed in as ' + u.name, u.role + ' access'); }}><Avatar name={u.name} size={28} /><div><div style={{ fontWeight: 600 }}>{u.name}{u.id === user.id ? ' ✓' : ''}</div><div className="muted" style={{ fontSize: 12 }}>{u.title} · {u.role}</div></div></button>)}<div className="nav-sep" /><button type="button" className="pop-i" onClick={() => { setOpen(false); go('settings'); }}><Icon n="sliders" size={15} />Settings</button></div>}
   </div>);
 }
 
@@ -107,7 +107,7 @@ function App() {
       <aside className={'side' + (drawer ? ' open' : '')} aria-label="Main navigation">
         <div className="brand"><BrandLogo height={54} chip /><div className="brand-co">{st.company_name}</div><div className="brand-sys">{APP_CONFIG.systemName}</div><div style={{ marginTop: 10, fontWeight: 600, color: 'var(--primary-text)', lineHeight: 1.3 }}>{st.project_name}</div></div>
         <nav className="nav">{NAV.map((n) => <Fragment key={n.id}>{n.id === 'audit' && <div className="nav-sep" />}<button type="button" aria-current={active === n.id ? 'page' : undefined} onClick={() => go(n.id)}><Icon n={n.icon} size={18} />{n.label}</button></Fragment>)}</nav>
-        <div className="side-foot"><span className="demo-tag">Sample data</span><div style={{ marginTop: 8 }}>Prototype · {repo.kind}</div></div>
+        <div className="side-foot"><div>Storage · {repo.kind}</div></div>
       </aside>
       <div className="main">
         <header className="top">

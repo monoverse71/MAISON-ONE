@@ -73,8 +73,8 @@ function Card({ title, sub, actions, children, flush, className }) {
     {flush ? children : <div className="card-b">{children}</div>}
   </section>);
 }
-function PageHead({ title, sub, actions, flow, demo }) {
-  return (<div className="ph"><div><div className="chips" style={{ marginBottom: 6 }}>{flow && <Flow dir={flow} />}{demo && <span className="demo-tag">Sample data</span>}</div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{actions && <div className="ph-actions">{actions}</div>}</div>);
+function PageHead({ title, sub, actions, flow }) {
+  return (<div className="ph"><div><div className="chips" style={{ marginBottom: 6 }}>{flow && <Flow dir={flow} />}</div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{actions && <div className="ph-actions">{actions}</div>}</div>);
 }
 function Stat({ label, value, sub, flow, title }) {
   return (<div className="card stat"><div className="stat-l"><span>{label}</span>{flow && <Flow dir={flow} />}</div><div className="stat-v" title={title}>{value}</div>{sub && <div className="stat-s">{sub}</div>}</div>);

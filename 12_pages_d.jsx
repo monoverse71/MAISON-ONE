@@ -13,7 +13,7 @@ function ReportsPage() {
   const isOverall = rep.id === 'overall';
   const exp = (format) => open('exportPreview', { report: rep, rows: res.rows, totals: res.totals, format: format, filters: f });
   return (<>
-    <PageHead title="Reports" sub="Filter, review and export. Exports are built from the same report definitions a server can later turn into PDF and Excel." demo />
+    <PageHead title="Reports" sub="Filter, review and export. Exports are built from the same report definitions a server can later turn into PDF and Excel." />
     <div className="rep-grid">
       <Card flush><div style={{ padding: 6, display: 'grid', gap: 2 }} className="nav" role="tablist" aria-label="Reports">{REPORTS.map((r) => <button key={r.id} type="button" role="tab" aria-selected={r.id === rid} aria-current={r.id === rid ? 'page' : undefined} onClick={() => setRid(r.id)}><Icon n="chart" size={16} />{r.title}</button>)}</div></Card>
       <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
@@ -60,7 +60,7 @@ function AuditPage() {
     { key: 'summary', label: 'Summary', render: (a) => <div style={{ minWidth: 260 }}>{a.summary}{a.reason && <div className="muted" style={{ fontSize: 12 }}>Reason: {a.reason}</div>}</div> }
   ];
   return (<>
-    <PageHead title="Audit log" sub="Every important action, who did it and when. Entries cannot be edited or deleted." demo />
+    <PageHead title="Audit log" sub="Every important action, who did it and when. Entries cannot be edited or deleted." />
     <Card flush>
       <div className="toolbar"><SearchBox value={q} onChange={setQ} placeholder="Search summary or reason" />
         <div style={{ minWidth: 180 }}><Sel value={act} onChange={setAct} options={uniq('action')} placeholder="All actions" aria-label="Action" /></div>
@@ -76,34 +76,46 @@ const TABLE_MAP = [['shareholders', 'shareholders'], ['nominees', 'nominees'], [
 function SettingsPage() {
   const { db, user, S, run, confirm, repoKind, setUserId } = useApp();
   const st = db.settings[0], admin = can(user, 'settings');
-  const [f, set] = useForm({ project_name: st.project_name, company_name: st.company_name, total_shares: String(st.total_shares), default_share_price: String(st.default_share_price) });
-  const [errs, setErrs] = useState({}); const [busy, setBusy] = useState(false);
-  const sold = Calc.sharesSold(db);
-  const save = async () => {
+  const [f, set] = useForm({ project_name: st.project_name, company_name: st.company_name, total_shares: String(st.total_shares), default_share_price: String(st.default_share_price), share_name: st.share_name || '', share_remarks: st.share_remarks || '' });
+  const [errs, setErrs] = useState({}); const [busy, setBusy] = useState(false); const [busy2, setBusy2] = useState(false);
+  const sold = Calc.sharesSold(db), priceNum = Number(f.default_share_price) || 0, totalNum = Number(f.total_shares) || 0;
+  const saveIdentity = async () => {
     const e = {}; if (!f.project_name.trim()) e.project_name = 'Enter the project name.'; if (!f.company_name.trim()) e.company_name = 'Enter the company name.';
-    const ts = Number(f.total_shares); if (!ts || ts < 1 || Math.floor(ts) !== ts) e.total_shares = 'Enter a whole number of shares.'; else if (ts < sold) e.total_shares = sold + ' shares are already sold. The total cannot be lower.';
-    if (!(Number(f.default_share_price) > 0)) e.default_share_price = 'Enter a price above zero.';
     setErrs(e); if (V.hasErrors(e)) return; setBusy(true);
-    await run(() => S.updateSettings({ project_name: f.project_name.trim(), company_name: f.company_name.trim(), total_shares: ts, default_share_price: Number(f.default_share_price) }), 'Settings saved'); setBusy(false);
+    await run(() => S.updateSettings({ project_name: f.project_name.trim(), company_name: f.company_name.trim() }), 'Project identity saved'); setBusy(false);
+  };
+  const save = async () => {
+    const e = {};
+    const ts = Number(f.total_shares); if (!ts || ts < 1 || Math.floor(ts) !== ts) e.total_shares = 'Enter a whole number of shares.'; else if (ts < sold) e.total_shares = sold + ' shares are already sold. The total cannot be lower.';
+    if (f.default_share_price === '' || isNaN(Number(f.default_share_price)) || Number(f.default_share_price) < 0) e.default_share_price = 'Enter 0 (not set yet) or a positive price.';
+    setErrs(e); if (V.hasErrors(e)) return; setBusy2(true);
+    await run(() => S.updateSettings({ total_shares: ts, default_share_price: Number(f.default_share_price), share_name: f.share_name.trim(), share_remarks: f.share_remarks.trim() }), 'Share configuration saved'); setBusy2(false);
   };
   const archived = []; PK_TABLES.forEach((t) => { (db[t] || []).forEach((r) => { if (r.archived_at) archived.push({ id: t + r.id, table: t, label: r.code || r.name || r.full_name || r.id, at: r.archived_at, by: userName(db, r.archived_by), reason: r.archive_reason || '—' }); }); });
-  const reset = async () => { const a = await confirm({ title: 'Reset demo data?', message: 'This replaces everything in this prototype with the original sample records, including any changes you made.', confirmLabel: 'Reset', danger: true }); if (a.ok) run(() => S.resetDemo(), 'Demo data restored'); };
   const READY = [['Sign-in and roles', 'users table maps to Supabase Auth plus a profiles.role column. Role checks already run in the service layer (can()).', 'Wire up'], ['Row level security', 'One policy per table by role: Admin all, Accountant read and insert, Viewer read. Ledger tables get no update or delete policy.', 'Write policies'], ['File storage', 'documents.storage_path points at a private bucket. MockStorage is the only class to swap.', 'Create bucket'], ['Audit log', 'audit_logs rows are written in the same batch as the change. In Postgres, run the batch as one RPC and block update/delete with a trigger.', 'Add trigger'], ['Soft delete', 'archived_at, archived_by and archive_reason exist on every table. There is no hard delete anywhere.', 'Ready'], ['Reversals', 'Payments and expenses are append-only. Corrections add a negative entry that points at the original.', 'Ready'], ['Backups and recovery', 'Enable daily backups and point-in-time recovery in the Supabase project settings.', 'Configure']];
   return (<>
-    <PageHead title="Settings" sub="Project identity, access and how this prototype maps onto the future database." demo />
+    <PageHead title="Settings" sub="Project identity, share configuration, access and how this prototype maps onto the future database." />
     <div className="grid g2">
       <Card title="Project identity" sub="Version 1 manages one project. Names are read from here, not fixed in the pages.">
         <div className="frm">
           <Field label="Company name" req err={errs.company_name}><Txt value={f.company_name} onChange={set('company_name')} disabled={!admin} /></Field>
           <Field label="Project name" req err={errs.project_name}><Txt value={f.project_name} onChange={set('project_name')} disabled={!admin} /></Field>
-          <Field label="Total shares in the project" req err={errs.total_shares} hint={sold + ' sold so far'}><input className="inp" type="number" min="1" value={f.total_shares} onChange={(e) => set('total_shares')(e.target.value)} disabled={!admin} /></Field>
-          <Field label="Default price per share" req err={errs.default_share_price}><Money value={f.default_share_price} onChange={set('default_share_price')} disabled={!admin} /></Field>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14, alignItems: 'center' }}>{!admin && <span className="hint">Only an Admin can change these.</span>}<Btn variant="primary" busy={busy} disabled={!admin} onClick={save}>Save settings</Btn></div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14, alignItems: 'center' }}>{!admin && <span className="hint">Only an Admin can change these.</span>}<Btn variant="primary" busy={busy} disabled={!admin} onClick={saveIdentity}>Save identity</Btn></div>
       </Card>
-      <Card title="Signed in as" sub="Prototype only. Switch role to see what each one can do.">
+      <Card title="Share Configuration" sub="Total shares and the price per share. Every booking, dashboard figure and report reads these values.">
+        {priceNum <= 0 && <Note tone="warn">The share price has not been configured yet. Enter it below when it is finalised. Until then, share values show as not set and new bookings are blocked.</Note>}
+        <div className="frm" style={{ marginTop: priceNum <= 0 ? 10 : 0 }}>
+          <Field label="Total shares in the project" req err={errs.total_shares} hint={sold + ' sold · ' + Math.max(0, totalNum - sold) + ' available'}><input className="inp" type="number" min="1" value={f.total_shares} onChange={(e) => set('total_shares')(e.target.value)} disabled={!admin} /></Field>
+          <Field label="Share price (per share)" req err={errs.default_share_price} hint={priceNum > 0 ? 'Total share value ' + fmtMoney(totalNum * priceNum) : 'Not configured (৳0)'}><Money value={f.default_share_price} onChange={set('default_share_price')} disabled={!admin} /></Field>
+          <Field label="Share name / type"><Txt value={f.share_name} onChange={set('share_name')} disabled={!admin} /></Field>
+          <Field label="Remarks" full><Area rows={2} value={f.share_remarks} onChange={set('share_remarks')} disabled={!admin} /></Field>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14, alignItems: 'center' }}>{!admin && <span className="hint">Only an Admin can change these.</span>}<Btn variant="primary" busy={busy2} disabled={!admin} onClick={save}>Save share configuration</Btn></div>
+      </Card>
+      <Card title="Signed in as" sub="Switch role to see what each one can do.">
         <div style={{ display: 'grid', gap: 12 }}>
-          <Field label="Demo user"><Sel value={user.id} onChange={setUserId} options={db.users.map((u) => ({ value: u.id, label: u.name + ' · ' + u.role }))} /></Field>
+          <Field label="Signed in as"><Sel value={user.id} onChange={setUserId} options={db.users.map((u) => ({ value: u.id, label: u.name + ' · ' + u.role }))} /></Field>
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Role</th><th>Add records</th><th>Reverse</th><th>Approve</th><th>Archive</th><th>Settings</th></tr></thead><tbody>
             {Object.keys(PERMS).map((role) => <tr key={role}><td><b>{role}</b></td>{['write', 'reverse', 'approve', 'archive', 'settings'].map((p) => <td key={p}>{PERMS[role].indexOf(p) >= 0 ? <span className="badge t-ok">Yes</span> : <span className="muted">No</span>}</td>)}</tr>)}
           </tbody></table></div>
@@ -119,6 +131,5 @@ function SettingsPage() {
     <Card title="Archived records" sub="Archived items are hidden from lists and kept for the audit trail." flush>
       <DataTable rows={archived} pageSize={6} empty={{ title: 'Nothing archived', text: 'Archived shareholders, bookings and documents will be listed here.', icon: 'archive' }} cols={[{ key: 'table', label: 'Record type', render: (r) => <span className="mono">{r.table}</span> }, { key: 'label', label: 'Record' }, { key: 'at', label: 'Archived', render: (r) => fmtDateTime(r.at) }, { key: 'by', label: 'By' }, { key: 'reason', label: 'Reason' }]} />
     </Card>
-    <Card title="Sample data"><div className="chips" style={{ justifyContent: 'space-between' }}><span className="muted" style={{ maxWidth: 560 }}>Every record here is fictional and marked as sample data. Clear it before real use.</span><Btn variant="danger" disabled={!admin} onClick={reset}>Reset sample data</Btn></div></Card>
   </>);
 }

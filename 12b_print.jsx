@@ -45,7 +45,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note }) {
     <div className="doc-body" ref={fp.body}><div className="doc-fit" ref={fp.fit}>{children}</div></div>
     <footer className="doc-foot">
       <span>{st.company_name} · {title}{docNo ? ' · ' + docNo : ''}</span>
-      <span>Printed {fmtDate(TODAY)} by {ctx.user.name}{st._demo ? ' · Sample data, not a real record' : ''}</span>
+      <span>Printed {fmtDate(TODAY)} by {ctx.user.name}</span>
       {note && <span className="doc-note">{note}</span>}
     </footer>
   </article>);
@@ -290,7 +290,7 @@ const PRINT_DOCS = {
     render: (ctx, a) => {
       const db = ctx.db, st = db.settings[0], units = db.units.filter(live), imgs = projectImagesOf(db);
       return (<DocFrame ctx={ctx} title="Project details" docNo={'PD-' + TODAY.replace(/-/g, '')} date={TODAY}>
-        <Sect title="Project"><KV cols={2} items={[['Project name', <b>{st.project_name}</b>], ['Project type', st.project_type], ['Location', st.location], ['Developer / company', st.company_name], ['Land area', st.land_area], ['Building structure', st.building_structure], ['Total floors', TOTAL_FLOORS + ' plus roof top'], ['Commercial floors', COMM_FLOORS], ['Residential floors', RES_FLOORS.length], ['Total residential units', units.length], ['Unit size', units.length ? units[0].size_sqft.toLocaleString('en-US') + ' sq ft each' : ''], ['Construction start', st.construction_start ? fmtDate(st.construction_start) : ''], ['Expected completion', st.expected_completion ? fmtDate(st.expected_completion) : '']]} /></Sect>
+        <Sect title="Project"><KV cols={2} items={[['Project name', <b>{st.project_name}</b>], ['Project type', st.project_type], ['Location', st.location], ['Developer / company', st.company_name], ['Land area', st.land_area], ['Total area', st.total_area], ['Building', 'Ground + 12 Floors + Rooftop'], ['Commercial', 'Ground\u20133rd Floor'], ['Residential', '4th\u201312th Floor'], ['Residential floors', RES_FLOORS.length], ['Units per floor', UNIT_LETTERS.length], ['Residential units', units.length], ['Rooftop', 'Amenity area, not residential'], ['Unit size', units.length ? units[0].size_sqft.toLocaleString('en-US') + ' sq ft each' : ''], ['Construction start', st.construction_start ? fmtDate(st.construction_start) : ''], ['Expected completion', st.expected_completion ? fmtDate(st.expected_completion) : '']]} /></Sect>
         <Sect title="Description"><p className="dnote" style={{ fontSize: '9.5pt', color: '#1F2937' }}>{st.description || '—'}</p></Sect>
         <Sect title="Building structure"><DT cols={[{ l: 'Floor', k: 'f' }, { l: 'Use', k: 'u' }, { l: 'Units', r: true, k: 'n' }]} rows={BUILDING.map((b) => ({ f: b.label, u: b.use, n: b.units || '—' }))} foot={{ 0: 'Total', 2: units.length }} /></Sect>
         <Sect title="Construction, handover and contact"><KV cols={2} items={[['Construction / handover', st.handover_info], ['Contact phone', st.contact_phone], ['Contact email', st.contact_email], ['Contact address', st.contact_address]]} /></Sect>

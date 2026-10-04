@@ -11,7 +11,7 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = []; page.on('pageerror', e => errors.push('PAGEERROR ' + e.message)); page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push('CONSOLE ' + m.text()); });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
-  await page.goto('file://'+process.cwd()+'/dist_local.html'); await page.waitForSelector('text=Total shareholders');
+  await page.goto('file:///home/claude/apon/dist_local.html'); await page.waitForSelector('text=Total shareholders');
   const nav = async n => { await page.locator('aside nav button', { hasText: n }).first().click(); await page.waitForTimeout(250); };
   const ok = (c, m) => console.log((c ? 'ok   ' : 'FAIL ') + m);
   const dlg = () => page.locator('[role=dialog]').last();
@@ -20,8 +20,34 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   // pages
   for (const n of ['Dashboard','Shareholders','Share Sales','Units','Construction Contributions','Project Expenses','Payments','Documents','Reports','Audit Log','Settings','Project Details']) { await nav(n); if (await page.locator('text=This page could not be shown').count()) ok(false, 'page ' + n); }
   ok(true, 'all 12 pages render (incl. Project Details)');
+  // ---- clean initial state (no sample data) ----
+  await nav('Dashboard'); await page.waitForTimeout(300);
+  { const card = (label) => page.locator('.stat', { hasText: label }).first().innerText().then(t => t.replace(/\s+/g, ' '));
+    const want = [['Total shareholders', '0'], ['Total shares', '60'], ['Shares sold', '0'], ['Shares available', '60'], ['Share price', '৳0'], ['Total share value', '৳0'], ['Share collection', '৳0'], ['Share due', '৳0'], ['Construction contributions', '৳0'], ['Project construction expense', '৳0']];
+    for (const [l, v] of want) { const t = await card(l); ok(new RegExp(l, 'i').test(t) && t.replace(new RegExp(l, 'i'), '').replace(/MONEY (IN|OUT)/, '').trim().startsWith(v), 'dashboard "' + l + '" starts at ' + v + ' (' + t.slice(0, 60) + ')'); }
+    const m = await page.locator('main').innerText();
+    ok(m.includes('share price has not been configured'), 'dashboard says the share price is not configured');
+    ok(m.includes('No transactions yet'), 'dashboard shows "No transactions yet" empty state');
+    ok(!/Sample data|sample|demo/i.test(await page.locator('body').innerText()), 'no sample/demo wording anywhere on the dashboard or sidebar'); }
+  for (const [n, sel] of [['Shareholders', 'tbody tr'], ['Share Sales', 'tbody tr'], ['Construction Contributions', 'tbody tr'], ['Project Expenses', 'tbody tr'], ['Payments', 'tbody tr'], ['Documents', 'tbody tr'], ['Audit Log', 'tbody tr']]) { await nav(n); ok(await page.locator('main ' + sel).count() === 0, n + ' list is empty on a clean project'); }
+  await nav('Units'); ok(await page.locator('.ucard').count() === 36 && await page.locator('.ucard.s-Available').count() === 36, 'Units: 36 cards, all Available');
+  await nav('Project Details');
+  { const t = await page.locator('main').innerText(); ok(t.includes('Maison One') && t.includes('12 Katha') && t.includes('8,640 sq ft') && t.includes('Ground + 12 Floors + Rooftop') && t.includes('Ground\u20133rd Floor') && t.includes('4th\u201312th Floor') && t.includes('1,440 sq ft'), 'Project Details show name, 12 Katha, 8,640 sq ft, building, commercial, residential, unit size'); ok(/Residential floors\s*9/.test(t) && /Residential units\s*36/.test(t) && t.includes('Rooftop / Amenity Area'), 'residential floors 9, units 36, rooftop is amenity area'); ok(await page.locator('.pgrid .pimg img').count() === 0, 'no sample project images'); }
+  // booking is blocked while the price is 0
+  await nav('Share Sales'); await page.getByRole('button', { name: /New share booking/ }).first().click();
+  ok(await dlg().locator('text=share price has not been configured').count() >= 1, 'booking form warns that the price is not configured');
+  ok(await dlg().getByRole('button', { name: 'Save booking' }).isDisabled(), 'Save booking is disabled at price 0'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  // Settings -> Share Configuration
+  await nav('Settings');
+  ok(await page.locator('text=Share Configuration').count() >= 1 && !(await page.locator('text=Reset sample data').count()), 'Settings has Share Configuration, no sample-data reset');
+  ok(await page.getByLabel(/Total shares in the project/).inputValue() === '60' && await page.getByLabel(/Share price \(per share\)/).inputValue() === '0', 'Settings shows total shares 60 and price 0');
+  await page.getByLabel(/Share price \(per share\)/).fill('1000000'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(700);
+  ok((await toasts()).join(' ').includes('Share configuration saved'), 'share price set to 10,00,000 from Settings (no code change)');
+  await nav('Dashboard'); { const t = await page.locator('.stat', { hasText: 'Total share value' }).first().innerText(); ok(/6[,0-9.]*\s*(Cr|crore|Crore)|6,00,00,000|6\.0?0? ?Cr/i.test(t), 'dashboard Total share value updates to 60 x price (' + t.replace(/\s+/g, ' ') + ')'); ok(!(await page.locator('text=share price has not been configured').count()), 'not-configured banner gone'); }
+  await nav('Settings'); await page.getByLabel(/Total shares in the project/).fill('0'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(300); ok(await page.locator('text=Enter a whole number of shares').count() === 1, 'total shares 0 rejected');
+  await page.getByLabel(/Total shares in the project/).fill('60');
   // 1 shareholder + six uploads
-  await nav('Shareholders'); await page.getByRole('button', { name: /Add shareholder/ }).click();
+  await nav('Shareholders'); await page.getByRole('button', { name: /Add shareholder/ }).first().click();
   await dlg().getByLabel(/Full name/).fill('Rahim Uddin Test'); await dlg().getByLabel(/^Phone number/).fill('01766-555123'); await dlg().getByLabel(/NID number/).fill('1987654321');
   await dlg().locator('.slot input[type=file]').nth(3).setInputFiles(files[3]);
   await dlg().getByRole('button', { name: 'Add shareholder' }).click(); await page.waitForTimeout(300);
@@ -51,7 +77,9 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   ok(await page.locator('.slots .slot img').count() === 6, 'NID front re-uploaded');
   // 2 share booking with payment
   await page.getByRole('button', { name: 'New booking' }).click();
-  await dlg().getByLabel('Share quantity').fill('1');
+  ok(await dlg().getByLabel(/Share price \(from Settings\)/).isDisabled(), 'booking price field is read-only (from Settings)');
+  await dlg().getByLabel('Share quantity').fill('61'); await dlg().getByRole('button', { name: 'Save booking' }).click(); await page.waitForTimeout(250); ok(await dlg().locator('text=Only 60 share(s) are still available').count() === 1, 'quantity above available (60) rejected');
+  await dlg().getByLabel('Share quantity').fill('1'); ok((await dlg().innerText()).replace(/\s+/g, ' ').includes('Grand total ৳10,00,000'), 'booking total calculated automatically (1 x ৳10,00,000)');
   await dlg().locator('label', { hasText: /^Amount/ }).first().click().catch(()=>{});
   await dlg().getByLabel(/^Amount/).fill('300000'); await dlg().getByLabel('Payment method').selectOption('bKash'); await dlg().getByLabel('Reference', { exact: true }).fill('BK-TRX-7788');
   await dlg().getByRole('button', { name: /Save & add payment/ }).click(); await page.waitForTimeout(900);
@@ -123,10 +151,13 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   for (const [item, name] of [['Shareholder 360 summary', 'profile_360'], ['Financial statement', 'shareholder_statement'], ['Payment history statement', 'payment_statement']]) {
     await page.getByRole('button', { name: 'Print' }).first().click(); await page.getByRole('menuitem', { name: item }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(400); await shot('10_' + name); await pdf(name); await page.locator('.pv').getByRole('button', { name: 'Close' }).click(); }
   await nav('Share Sales'); await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print booking/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('booking'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
-  await nav('Project Expenses'); await page.getByRole('button', { name: /Print expense records/ }).click(); await page.waitForSelector('.pv .paper'); await shot('11_expense_records'); await pdf('expense_records'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
+  await nav('Project Expenses'); await page.getByRole('button', { name: /Add project expense/ }).first().click();
+  await dlg().getByLabel('Expense category').selectOption('Cement'); await dlg().getByLabel('Payee name').fill('Test Supplier'); await dlg().getByLabel('Description').fill('Cement test purchase'); await dlg().getByLabel(/^Amount/).fill('150000'); await dlg().getByLabel('Payment method').selectOption('Cash');
+  await dlg().getByRole('button', { name: /^Save|Add expense|Record/ }).last().click(); await page.waitForTimeout(900); ok(await page.locator('tbody tr', { hasText: 'Cement test purchase' }).count() === 1, 'expense created through the UI');
+  await page.getByRole('button', { name: /Print expense records/ }).click(); await page.waitForSelector('.pv .paper'); await shot('11_expense_records'); await pdf('expense_records'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print voucher/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('expense_voucher'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   await nav('Payments'); await page.getByRole('button', { name: /Print statement/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('all_payments'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
-  await nav('Documents'); ok(await page.locator('tbody .thumb img').count() > 5, 'Documents page shows thumbnails'); await shot('12_documents');
+  await nav('Documents'); ok(await page.locator('tbody .thumb img').count() >= 3, 'Documents page shows thumbnails of uploaded files only'); await shot('12_documents');
   await nav('Dashboard'); ok((await page.locator('main').innerText()).includes('Construction contributions outstanding'), 'dashboard has flexible contribution card'); await shot('13_dashboard');
   await nav('Reports'); for (const id of ['Construction Contribution', 'Construction Due']) { const b = page.locator('[role=tab]', { hasText: id }).first(); if (await b.count()) { await b.click(); await page.waitForTimeout(200); } }
   await page.getByRole('button', { name: 'Print A4' }).click(); await page.waitForSelector('.pv .paper'); await shot('14_report_print'); await pdf('report'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
@@ -141,24 +172,24 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   ok(pl.ok && Math.abs(pl.ratio - 1) < 0.02, 'A4 header shows the official logo, undistorted (ratio ' + pl.ratio.toFixed(3) + ')'); await pdf('receipt_with_logo'); await shot('15_receipt_logo'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   // ---- project details ----
   await nav('Project Details'); await page.waitForSelector('text=Project images');
-  ok(await page.locator('.pgrid .pimg img').count() === 4, 'project page shows 4 sample image thumbnails');
+  ok(await page.locator('.pgrid .pimg img').count() === 0, 'project page has no images until some are uploaded');
   ok((await page.locator('main').innerText()).includes('36') && (await page.locator('main').innerText()).includes('1,440 sq ft'), 'project facts reuse live data: 36 units, 1,440 sq ft'); await shot('16_project');
   await page.getByRole('button', { name: /^Add images/ }).first().click();
   await dlg().locator('input[type=file]').setInputFiles([files[0], files[1], files[2]]); await page.waitForTimeout(300);
   ok(await dlg().locator('.pq-i img').count() === 3, 'three images staged with previews');
   await dlg().getByLabel('Image title').first().fill('North elevation'); await dlg().getByLabel('Category').first().selectOption('Building');
   await dlg().getByRole('button', { name: /Add 3 images/ }).click(); await page.waitForTimeout(1500);
-  ok(await page.locator('.pgrid .pimg img').count() === 7, 'multiple images uploaded (4 -> 7) and thumbnails appear'); ok((await page.locator('.pgrid').innerText()).includes('North elevation'), 'caption shown'); await shot('17_project_gallery');
+  ok(await page.locator('.pgrid .pimg img').count() === 3, 'multiple images uploaded (0 -> 3) and thumbnails appear'); ok((await page.locator('.pgrid').innerText()).includes('North elevation'), 'caption shown'); await shot('17_project_gallery');
   await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).locator('.thumb').click(); await page.waitForSelector('.lb img');
   ok(await page.locator('.lb').getByText('Replace').count() === 1 && await page.locator('.lb').getByRole('button', { name: 'Remove' }).count() === 1, 'project image opens in the existing lightbox with Replace and Remove'); await page.keyboard.press('Escape');
   await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).locator('input[type=file]').setInputFiles(files[6]); await page.waitForTimeout(900);
-  ok((await toasts()).join(' ').includes('Image replaced') && await page.locator('.pgrid .pimg img').count() === 7, 'replace works (still 7, old one archived)');
+  ok((await toasts()).join(' ').includes('Image replaced') && await page.locator('.pgrid .pimg img').count() === 3, 'replace works (still 3, old one archived)');
   await page.locator('.pgrid .pimg', { hasText: 'North elevation' }).getByRole('button', { name: 'Details' }).click(); await dlg().getByLabel('Title / caption').fill('North elevation (final)'); await dlg().getByRole('button', { name: 'Save' }).click(); await page.waitForTimeout(700);
   ok((await page.locator('.pgrid').innerText()).includes('North elevation (final)'), 'caption edit works');
   await page.locator('.pgrid .pimg', { hasText: 'North elevation (final)' }).getByRole('button', { name: 'Remove' }).click(); await dlg().getByRole('textbox').fill('Test removal'); await dlg().getByRole('button', { name: 'Remove' }).click(); await page.waitForTimeout(800);
-  ok(await page.locator('.pgrid .pimg img').count() === 6, 'remove works (7 -> 6, archived with reason)');
-  await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel('Land area').fill('12 katha (test)'); await dlg().getByLabel('Construction start date').fill('2026-01-15'); await dlg().getByLabel(/Expected completion/).fill('2029-06-30'); await dlg().getByLabel('Building structure').fill('G+12 with roof top (test)'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(700);
-  { const t = await page.locator('main').innerText(); ok(t.includes('12 katha (test)') && t.includes('15 Jan 2026') && t.includes('30 Jun 2029') && t.includes('G+12 with roof top (test)'), 'project information edit works (area, dates, structure)'); ok(t.includes('Total floors') && t.includes('Commercial floors') && t.includes('Residential floors') && t.includes('Total residential units'), 'all requested information rows are shown'); }
+  ok(await page.locator('.pgrid .pimg img').count() === 2, 'remove works (3 -> 2, archived with reason)');
+  await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel('Land area').fill('12 Katha (edited)'); await dlg().getByLabel('Construction start date').fill('2026-01-15'); await dlg().getByLabel(/Expected completion/).fill('2029-06-30'); await dlg().getByLabel('Building structure').fill('G+12 with roof top (test)'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(700);
+  { const t = await page.locator('main').innerText(); ok(t.includes('12 Katha (edited)') && t.includes('15 Jan 2026') && t.includes('30 Jun 2029') && t.includes('G+12 with roof top (test)'), 'project information edit works (area, dates, structure)'); ok(t.includes('Commercial') && t.includes('Residential floors') && t.includes('Residential units') && t.includes('Total area'), 'all requested information rows are shown'); }
   await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel(/Expected completion/).fill('2020-01-01'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(300); ok(await dlg().locator('text=Completion cannot be before the start date').count() === 1, 'completion before start is rejected'); await page.keyboard.press('Escape');
   await nav('Audit Log'); ok((await page.locator('main').innerText()).includes('project image'), 'project image changes are in the audit log');
   await nav('Project Details'); await page.getByRole('button', { name: /Print project sheet/ }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(700); await shot('18_project_print'); await pdf('project_sheet'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();

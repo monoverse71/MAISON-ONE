@@ -92,6 +92,8 @@ const Calc = {
     upcoming.sort(function (a, b) { return a.due_date.localeCompare(b.due_date); });
     return {
       shareholders: shs.length, sharesSold: sum(bookings, function (x) { return x.b.quantity; }), totalShares: settings.total_shares,
+      sharePrice: Number(settings.default_share_price) || 0, priceSet: Number(settings.default_share_price) > 0, availableShares: Math.max(0, settings.total_shares - sum(bookings, function (x) { return x.b.quantity; })),
+      totalShareValue: roundMoney(settings.total_shares * (Number(settings.default_share_price) || 0)), soldShareValue: shareValue,
       shareValue: shareValue, shareCollected: shareCollected, shareDue: roundMoney(shareValue - shareCollected),
       consPlanned: consPlanned, consCollected: consCollected, consDue: roundMoney(consPlanned - consCollected),
       expense: expense, fund: roundMoney(shareCollected + consCollected - expense), receivables: roundMoney(shareValue - shareCollected + consPlanned - consCollected),
@@ -104,6 +106,7 @@ const Calc = {
   },
   notifications: function (db) {
     const d = Calc.dashboard(db), out = [];
+    if (!d.priceSet) out.push({ tone: 'warn', title: 'Share price is not configured yet', text: 'Set it in Settings > Share Configuration before taking bookings', go: ['settings'] });
     if (d.consNotStarted) out.push({ tone: 'info', title: d.consNotStarted + ' unit' + (d.consNotStarted > 1 ? 's' : '') + ' with no construction payment yet', text: 'Contribution set, nothing received', go: ['construction'] });
     const pend = db.project_expenses.filter(function (e) { return live(e) && e.approval_status === 'Pending'; });
     if (pend.length) out.push({ tone: 'warn', title: pend.length + ' expense' + (pend.length > 1 ? 's' : '') + ' awaiting approval', text: fmtMoney(sum(pend, function (e) { return e.amount; })) + ' pending', go: ['expenses'] });
@@ -151,7 +154,7 @@ const V = {
     const q = Number(f.quantity);
     if (!f.quantity || isNaN(q) || q < 1 || Math.floor(q) !== q) e.quantity = 'Enter a whole number of shares, at least 1.';
     else if (q > ctx.available) e.quantity = 'Only ' + ctx.available + ' share(s) are still available.';
-    const p = Number(f.unit_price); if (!f.unit_price || isNaN(p) || p <= 0) e.unit_price = 'Enter the price per share.';
+    const p = Number(f.unit_price); if (!f.unit_price || isNaN(p) || p <= 0) e.unit_price = 'The share price has not been configured. Set it in Settings > Share Configuration.';
     const dsc = Number(f.discount || 0); if (isNaN(dsc) || dsc < 0) e.discount = 'Discount cannot be negative.'; else if (!e.quantity && !e.unit_price && dsc > q * p) e.discount = 'Discount cannot exceed the total value.';
     if (!f.booking_date) e.booking_date = 'Choose the booking date.'; else if (f.booking_date > TODAY) e.booking_date = 'Booking date cannot be in the future.';
     return e;

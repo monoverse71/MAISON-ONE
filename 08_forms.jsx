@@ -182,27 +182,30 @@ function ScheduleGenerator({ total, onGenerate }) {
 
 /* ---------- booking ---------- */
 function BookingForm({ shareholderId, onClose }) {
-  const { db, S, run, open } = useApp(); const reqId = useRequestId();
-  const settings = db.settings[0], avail = settings.total_shares - Calc.sharesSold(db);
-  const [f, set, setF] = useForm({ shareholder_id: shareholderId || '', quantity: '1', unit_price: String(settings.default_share_price), booking_date: TODAY, discount: '0', reference_person: '', remarks: '' });
+  const { db, S, run, open, go } = useApp(); const reqId = useRequestId();
+  const settings = db.settings[0], priceSet = Number(settings.default_share_price) > 0, avail = settings.total_shares - Calc.sharesSold(db);
+  const [f, set, setF] = useForm({ shareholder_id: shareholderId || '', quantity: '1', unit_price: String(settings.default_share_price || 0), booking_date: TODAY, discount: '0', reference_person: '', remarks: '' });
   const [p, setP] = useForm({ amount: '', payment_date: TODAY, method: '', reference: '', note: '' });
   const [errs, setErrs] = useState({}); const [busy, setBusy] = useState(null);
   const total = roundMoney((Number(f.quantity) || 0) * (Number(f.unit_price) || 0)), disc = Number(f.discount) || 0, grand = Math.max(0, roundMoney(total - disc)), paid = Number(p.amount) > 0 ? Number(p.amount) : 0;
   const save = async (withPay) => {
     const e = V.booking(f, { available: avail });
+    if (!priceSet) { setErrs({ unit_price: 'The share price has not been configured. Set it in Settings > Share Configuration.' }); return; }
     if (withPay) { const pe = V.paymentCore(p); Object.keys(pe).forEach((k) => { e['p_' + k] = pe[k]; }); if (!e.p_amount && paid > grand + 0.005) e.p_amount = 'The payment cannot exceed the grand total of ' + fmtMoney(grand) + '.'; if (!e.p_payment_date && p.payment_date < f.booking_date) e.p_payment_date = 'The payment date cannot be before the booking date.'; }
     setErrs(e); if (V.hasErrors(e)) return;
     setBusy(withPay ? 'pay' : 'save');
     const r = await run(() => S.createBooking(Object.assign({}, f, { payment: withPay ? p : null }), reqId), withPay ? 'Booking and first payment saved' : 'Booking saved');
     setBusy(null); if (r.ok) { onClose(); if (r.r.payment) open('receipt', { kind: 'share', id: r.r.payment.id }); }
   };
-  return (<Modal title="New share booking" sub={avail + ' of ' + settings.total_shares + ' shares are still available.'} size="wide" onClose={onClose} footer={<><Btn onClick={onClose}>Cancel</Btn><Btn busy={busy === 'save'} disabled={!!busy} onClick={() => save(false)}>Save booking</Btn><Btn variant="primary" busy={busy === 'pay'} disabled={!!busy} onClick={() => save(true)}>Save &amp; add payment</Btn></>}>
+  return (<Modal title="New share booking" sub={avail + ' of ' + settings.total_shares + ' shares are still available.'} size="wide" onClose={onClose} footer={<><Btn onClick={onClose}>Cancel</Btn><Btn busy={busy === 'save'} disabled={!!busy || !priceSet || avail < 1} onClick={() => save(false)}>Save booking</Btn><Btn variant="primary" busy={busy === 'pay'} disabled={!!busy || !priceSet || avail < 1} onClick={() => save(true)}>Save &amp; add payment</Btn></>}>
+    {!priceSet && <Note tone="warn">The share price has not been configured yet, so a booking cannot be created. <button type="button" className="link" onClick={() => { onClose(); go('settings'); }}>Set the price in Settings &rarr; Share Configuration</button>.</Note>}
+    {priceSet && avail < 1 && <Note tone="warn">All {settings.total_shares} shares are sold. New bookings are blocked unless an Admin raises the total in Settings &rarr; Share Configuration.</Note>}
     <div className="frm">
       <div className="frm-t">Share allocation</div>
       <Field label="Shareholder" req err={errs.shareholder_id} full><Sel value={f.shareholder_id} onChange={set('shareholder_id')} options={db.shareholders.filter((s) => live(s) && s.status === 'Active').map((s) => ({ value: s.id, label: s.code + ' · ' + s.full_name + ' · ' + s.phone }))} placeholder="Select shareholder" disabled={!!shareholderId} /></Field>
       {!shareholderId && <div className="full" style={{ marginTop: -6 }}><Btn size="sm" icon="plus" onClick={() => open('shareholder', { onSaved: (row) => setF((x) => Object.assign({}, x, { shareholder_id: row.id })) })}>Add new shareholder</Btn></div>}
-      <Field label="Share quantity" req err={errs.quantity}><input className="inp" type="number" min="1" step="1" value={f.quantity} onChange={(e) => set('quantity')(e.target.value)} /></Field>
-      <Field label="Share price" req err={errs.unit_price}><Money value={f.unit_price} onChange={set('unit_price')} /></Field>
+      <Field label="Share quantity" req err={errs.quantity}><input className="inp" type="number" min="1" max={avail} step="1" value={f.quantity} onChange={(e) => set('quantity')(e.target.value)} /></Field>
+      <Field label="Share price (from Settings)" err={errs.unit_price} hint={priceSet ? 'Set in Settings > Share Configuration' : 'Not configured (৳0)'}><Money value={f.unit_price} onChange={() => {}} readOnly disabled /></Field>
       <Field label="Booking date" req err={errs.booking_date}><DateIn value={f.booking_date} onChange={set('booking_date')} max={TODAY} /></Field>
       <Field label="Discount" err={errs.discount}><Money value={f.discount} onChange={set('discount')} /></Field>
       <Field label="Reference person"><Txt value={f.reference_person} onChange={set('reference_person')} placeholder="Who introduced this buyer" /></Field>
@@ -366,7 +369,6 @@ function DocView({ id, onClose }) {
   return (<Modal title={d.file_name} sub={d.code} onClose={onClose} footer={<><Btn onClick={onClose}>Close</Btn><Btn variant="primary" icon="eye" onClick={() => open('lightbox', { docId: d.id })}>Open larger preview</Btn></>}>
     <div className="docprev"><DocThumb doc={d} alt={d.file_name} /></div>
     <dl className="dl"><dt>Document ID</dt><dd className="mono">{d.code}</dd><dt>Type</dt><dd>{d.doc_type}</dd><dt>Belongs to</dt><dd>{relatedLabel(db, d)}</dd><dt>File type</dt><dd>{d.file_type}</dd><dt>Size</dt><dd>{fmtBytes(d.size_bytes)}</dd><dt>Uploaded</dt><dd>{fmtDateTime(d.uploaded_at)} by {userName(db, d.uploaded_by)}</dd><dt>Description</dt><dd>{d.description || '—'}</dd><dt>Storage path</dt><dd className="mono">{d.storage_path}</dd></dl>
-    {d._demo && <Note>Sample image generated for demonstration. It is not a real person or document.</Note>}
   </Modal>);
 }
 

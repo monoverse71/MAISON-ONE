@@ -76,7 +76,7 @@ function PendingImage({ x, upd, remove }) {
 
 function ProjectEditForm({ onClose }) {
   const { db, S, run } = useApp(); const st = db.settings[0];
-  const [f, set] = useForm({ project_name: st.project_name || '', project_type: st.project_type || '', location: st.location || '', land_area: st.land_area || '', description: st.description || '', handover_info: st.handover_info || '', building_structure: st.building_structure || '', construction_start: st.construction_start || '', expected_completion: st.expected_completion || '', contact_phone: st.contact_phone || '', contact_email: st.contact_email || '', contact_address: st.contact_address || '', notes: st.notes || '' });
+  const [f, set] = useForm({ project_name: st.project_name || '', project_type: st.project_type || '', location: st.location || '', land_area: st.land_area || '', total_area: st.total_area || '', description: st.description || '', handover_info: st.handover_info || '', building_structure: st.building_structure || '', construction_start: st.construction_start || '', expected_completion: st.expected_completion || '', contact_phone: st.contact_phone || '', contact_email: st.contact_email || '', contact_address: st.contact_address || '', notes: st.notes || '' });
   const [errs, setErrs] = useState({}); const [busy, setBusy] = useState(false);
   const submit = async () => { const e = {}; if (!f.project_name.trim()) e.project_name = 'Enter the project name.'; if (f.contact_email && !/^\S+@\S+\.\S+$/.test(f.contact_email)) e.contact_email = 'Enter a valid email address.'; if (f.construction_start && f.expected_completion && f.expected_completion < f.construction_start) e.expected_completion = 'Completion cannot be before the start date.'; setErrs(e); if (V.hasErrors(e)) return; setBusy(true); const r = await run(() => S.updateProjectDetails(f), 'Project details saved'); setBusy(false); if (r.ok) onClose(); };
   return (<Modal title="Edit project details" sub="Units, unit size, floors and shares come from the live project data and are not typed here." size="wide" onClose={onClose} footer={<ModalFooter onClose={onClose} busy={busy} onSubmit={submit} label="Save details" />}>
@@ -84,7 +84,8 @@ function ProjectEditForm({ onClose }) {
       <Field label="Project name" req err={errs.project_name}><Txt value={f.project_name} onChange={set('project_name')} /></Field>
       <Field label="Project type"><Txt value={f.project_type} onChange={set('project_type')} placeholder="Residential, commercial…" /></Field>
       <Field label="Project location"><Txt value={f.location} onChange={set('location')} /></Field>
-      <Field label="Land area"><Txt value={f.land_area} onChange={set('land_area')} placeholder="e.g. 10 katha" /></Field>
+      <Field label="Land area"><Txt value={f.land_area} onChange={set('land_area')} placeholder="e.g. 12 Katha" /></Field>
+      <Field label="Total project area"><Txt value={f.total_area} onChange={set('total_area')} placeholder="e.g. 8,640 sq ft" /></Field>
       <Field label="Building structure" full hint="Floors, commercial and residential levels. Counts below are calculated from the Units data."><Area value={f.building_structure} onChange={set('building_structure')} rows={2} /></Field>
       <Field label="Construction start date"><DateIn value={f.construction_start} onChange={set('construction_start')} /></Field>
       <Field label="Expected completion / handover" err={errs.expected_completion}><DateIn value={f.expected_completion} onChange={set('expected_completion')} /></Field>
@@ -108,7 +109,7 @@ function ProjectPage() {
   useEffect(() => { if (cat !== 'all' && !imgs.some((d) => d.category === cat)) setCat('all'); }, [imgs.length]);
   const rows = (items) => <dl className="dl">{items.map((it, i) => [<dt key={'t' + i}>{it[0]}</dt>, <dd key={'d' + i}>{it[1] || <span className="muted">Not added</span>}</dd>])}</dl>;
   return (<>
-    <PageHead title="Project Details" sub="Everything about the project in one place: information, building structure and project images." demo actions={<><Btn icon="printer" onClick={() => open('printPreview', { doc: 'project', args: {} })}>Print project sheet</Btn>{w && <Btn icon="edit" onClick={() => open('projectEdit', {})}>Edit details</Btn>}</>} />
+    <PageHead title="Project Details" sub="Everything about the project in one place: information, building structure and project images." actions={<><Btn icon="printer" onClick={() => open('printPreview', { doc: 'project', args: {} })}>Print project sheet</Btn>{w && <Btn icon="edit" onClick={() => open('projectEdit', {})}>Edit details</Btn>}</>} />
     <Card><div className="proj-hero">
       <div className="proj-hero-img">{main ? <DocThumb doc={main} alt={main.caption} /> : <div className="slot-empty" style={{ aspectRatio: '16/9' }}>No project image yet</div>}</div>
       <div className="proj-hero-t">
@@ -124,7 +125,7 @@ function ProjectPage() {
       </div>
     </div></Card>
     <div className="grid g2">
-      <Card title="Project information">{rows([['Project name', st.project_name], ['Project type', st.project_type], ['Project location', st.location], ['Developer / company', st.company_name], ['Land area', st.land_area], ['Building structure', st.building_structure], ['Total floors', TOTAL_FLOORS + ' floors (Ground to 12th) plus roof top'], ['Commercial floors', COMM_FLOORS + ' (Ground to 3rd)'], ['Residential floors', RES_FLOORS.length + ' (4th to 12th)'], ['Total residential units', units.length], ['Unit size', units.length ? units[0].size_sqft.toLocaleString('en-US') + ' sq ft each' : '']])}</Card>
+      <Card title="Project information">{rows([['Project name', st.project_name], ['Project type', st.project_type], ['Project location', st.location], ['Developer / company', st.company_name], ['Land area', st.land_area], ['Total area', st.total_area], ['Building', 'Ground + 12 Floors + Rooftop'], ['Building structure', st.building_structure], ['Commercial', 'Ground\u20133rd Floor (no residential units)'], ['Residential', '4th\u201312th Floor'], ['Residential floors', RES_FLOORS.length], ['Residential units per floor', UNIT_LETTERS.length], ['Residential units', units.length], ['Unit size', units.length ? units[0].size_sqft.toLocaleString('en-US') + ' sq ft each' : ''], ['Rooftop', 'Rooftop / Amenity Area (not a residential unit floor)']])}</Card>
       <Card title="Construction, handover and contact">{rows([['Construction start date', st.construction_start ? fmtDate(st.construction_start) : ''], ['Expected completion / handover', st.expected_completion ? fmtDate(st.expected_completion) : ''], ['Construction / handover notes', st.handover_info], ['Contact phone', st.contact_phone], ['Contact email', st.contact_email], ['Contact address', st.contact_address]])}</Card>
     </div>
     <div className="grid g2">

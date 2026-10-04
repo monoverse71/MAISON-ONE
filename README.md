@@ -1,6 +1,6 @@
 # Apon Niketon Holdings — Shareholder & Construction Management
 
-Single-project web app (React 18, no backend). Data layer is an in-memory mock repository, ready to be swapped for Supabase (not connected). All data is fictional sample data.
+Single-project web app (React 18, no backend). Data layer is an in-memory mock repository, ready to be swapped for Supabase (not connected). The app opens as a clean project: no sample records. Total shares 60, share price 0 (set in Settings > Share Configuration).
 
 ## Build
     npm install
@@ -11,7 +11,7 @@ Single-project web app (React 18, no backend). Data layer is an in-memory mock r
 00_core.js, 00b_logo.js (official logo as a data URL, from assets/logo.png), 01_seed.js, 02_repo.js, 03_calc.js, 04_services.js, 05_reports.js, 06_kit.jsx, 07_charts.jsx, 07b_files.jsx, 08_forms.jsx, 09_pages_a.jsx, 10_pages_b.jsx, 11_pages_c.jsx, 12_pages_d.jsx, 12b_print.jsx, 12c_project.jsx (Project Details + image gallery), 13_app.jsx, styles.css
 
 ## Layers
-- 00 core utils, 01 sample seed, 02 repository + MockStorage (swap for Supabase / Storage)
+- 00 core utils, 01 clean seed (config + 36 units only), 02 repository + MockStorage (swap for Supabase / Storage)
 - 03 calculations + validation, 04 services (audit, reversal, uploads), 05 reports
 - 06–07b UI kit, charts, upload/preview/lightbox; 08–12 forms and pages; 12b A4 print documents; 13 app shell
 - styles.css includes the A4 print CSS (`@page`, `#print-root`, `@media print`)

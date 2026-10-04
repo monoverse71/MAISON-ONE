@@ -129,7 +129,10 @@ function createServices(ctx) {
     }, extra || {}));
   }
   S.createBooking = async function (input, requestId) {
-    guard('write'); const db = getDb(), total = db.settings[0].total_shares, avail = total - Calc.sharesSold(db); need(V.booking(input, { available: avail }));
+    guard('write'); const db = getDb(), total = db.settings[0].total_shares, avail = total - Calc.sharesSold(db);
+    /* The price always comes from Settings. Anything typed by the caller is ignored. */
+    if (!(Number(db.settings[0].default_share_price) > 0)) throw new AppError('The share price has not been configured yet. Set it in Settings > Share Configuration before creating a booking.', 'Share price not set', 'PRICE_NOT_SET');
+    input = Object.assign({}, input, { unit_price: Number(db.settings[0].default_share_price) }); need(V.booking(input, { available: avail }));
     const pay = input.payment && Number(input.payment.amount) > 0 ? input.payment : null, id = uid('bk'), grand = Number(input.quantity) * Number(input.unit_price) - Number(input.discount || 0);
     if (pay) { const pe = V.paymentCore(pay); need(pe); if (Number(pay.amount) > grand + 0.005) throw new AppError('The first payment exceeds the booking total. Lower it or increase the share quantity.', 'Payment too high', 'OVERPAY'); if (pay.payment_date < input.booking_date) throw new AppError('The payment date cannot be earlier than the booking date.', 'Check the dates', 'VALIDATION'); }
     const code = codeGen(db.share_bookings, 'BK-', 4)(), booking = ins('share_bookings', { id: id, code: code, shareholder_id: input.shareholder_id, quantity: Number(input.quantity), unit_price: Number(input.unit_price), discount: Number(input.discount || 0), booking_date: input.booking_date, reference_person: input.reference_person || '', remarks: input.remarks || '', status: 'Active', created_by: getUser().id, created_at: nowIso() });
@@ -270,7 +273,7 @@ function createServices(ctx) {
 
   /* ---------- project details + project images ----------
      Images are rows in `documents` (related_type 'project'), so they use the same storage adapter, audit trail and archive-only removal as every other file. */
-  const PROJECT_KEYS = ['project_name', 'project_type', 'location', 'land_area', 'description', 'handover_info', 'building_structure', 'construction_start', 'expected_completion', 'contact_phone', 'contact_email', 'contact_address', 'notes'];
+  const PROJECT_KEYS = ['project_name', 'project_type', 'location', 'land_area', 'total_area', 'description', 'handover_info', 'building_structure', 'construction_start', 'expected_completion', 'contact_phone', 'contact_email', 'contact_address', 'notes'];
   const projectImages = function (db) { return db.documents.filter(function (d) { return live(d) && d.related_type === 'project' && d.slot === 'project_image'; }); };
   S.updateProjectDetails = async function (f) {
     guard('write'); const cur = getDb().settings[0], patch = {};
@@ -311,10 +314,12 @@ function createServices(ctx) {
 
   /* ---------- settings ---------- */
   S.updateSettings = async function (patch) {
-    guard('settings'); const cur = getDb().settings[0], d = diff(cur, patch, Object.keys(patch));
+    guard('settings'); const db0 = getDb(), cur = db0.settings[0];
+    if ('total_shares' in patch) { const ts = Number(patch.total_shares), sold = Calc.sharesSold(db0); if (!ts || ts < 1 || Math.floor(ts) !== ts) throw new AppError('Enter a whole number of shares.', 'Invalid total shares', 'VALIDATION'); if (ts < sold) throw new AppError(sold + ' shares are already sold. The total cannot be lower.', 'Total below sold', 'VALIDATION'); patch.total_shares = ts; }
+    if ('default_share_price' in patch) { const pr = Number(patch.default_share_price); if (isNaN(pr) || pr < 0) throw new AppError('The share price cannot be negative.', 'Invalid share price', 'VALIDATION'); patch.default_share_price = pr; }
+    const d = diff(cur, patch, Object.keys(patch));
     if (!d.changed.length) throw new AppError('Nothing was changed.', 'No changes', 'NO_CHANGE');
     await commit([{ op: 'update', table: 'settings', id: 'settings', patch: patch }, audit('Edited settings', 'settings', 'settings', 'Changed settings: ' + d.changed.join(', '), { before: d.before, after: d.after })]);
   };
-  S.resetDemo = async function () { guard('settings'); repo.reset(createSeed()); await refresh(); };
   return S;
 }

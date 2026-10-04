@@ -7,10 +7,9 @@
 const APP_CONFIG = {
   companyName: 'Apon Niketon Holdings',
   systemName: 'Project Management System',
-  projectName: 'Niketon Heights, Bashundhara R/A',
-  totalShares: 40,
-  defaultSharePrice: 1000000,
-  demo: true,
+  projectName: 'Maison One',
+  totalShares: 60,
+  defaultSharePrice: 0, /* initial only. The live price is edited in Settings > Share Configuration. */
 };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
