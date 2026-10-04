@@ -98,7 +98,7 @@ const PRINT_DOCS = {
           <KV cols={2} items={share ? [['Booking', b.code], ['Shares booked', b.quantity + ' × ' + fmtMoney(b.unit_price)], ['Unit(s)', unit.map((x) => x.code).join(', ') || 'Not assigned yet'], ['Payment type', 'Land share payment']] : [['Unit', <b>{u.code}</b>], ['Floor · size', floorName(u.floor) + ' · ' + u.size_sqft.toLocaleString('en-US') + ' sq ft'], ['Contribution ref.', plan.code], ['Payment type', 'Construction contribution']]} />
         </Sect>
         <Sect title="Payment details">
-          <DT cols={[{ l: 'Receipt no.', k: 'r' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: (r) => <b>{fmtMoney(p.amount)}</b> }]} rows={[{ r: p.receipt_no, d: fmtDate(p.payment_date), m: p.method, x: p.reference || '—' }]} />
+          <DT cols={[{ l: 'Receipt no.', k: 'r' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: (r) => <b>{fmtMoney(p.amount)}</b> }]} rows={[{ r: p.receipt_no, d: fmtDate(p.payment_date), m: methodLabel(p), x: p.reference || '—' }]} />
           <div className="words"><span>Amount in words</span><b>{amountInWords(Math.abs(p.amount))}</b></div>
           {p.note && <p className="dnote">Note: {p.note}</p>}
           {isRev && <p className="dnote">This entry cancels {db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join('')}. Reason: {p.reversal_reason}</p>}
@@ -121,7 +121,7 @@ const PRINT_DOCS = {
       const db = ctx.db, b = Calc.byId(db.share_bookings, a.id); if (!b) return <Missing />;
       const sh = Calc.byId(db.shareholders, b.shareholder_id), s = Calc.bookingSummary(db, b), pays = s.payments.slice().sort((x, y) => x.payment_date.localeCompare(y.payment_date) || x.created_at.localeCompare(y.created_at));
       const units = db.units.filter((x) => live(x) && x.shareholder_id === sh.id); let run = s.grand;
-      const rows = pays.map((p) => { run = roundMoney(run - p.amount); return { date: fmtDate(p.payment_date), rc: p.receipt_no, m: p.method, x: p.reference || '—', a: p.amount, bal: run, _cls: p.status === 'Reversed' ? 'strike' : '' }; });
+      const rows = pays.map((p) => { run = roundMoney(run - p.amount); return { date: fmtDate(p.payment_date), rc: p.receipt_no, m: methodLabel(p), x: p.reference || '—', a: p.amount, bal: run, _cls: p.status === 'Reversed' ? 'strike' : '' }; });
       return (<DocFrame ctx={ctx} title="Share booking document" docNo={b.code} date={b.booking_date}>
         <Sect title="Shareholder">{partyBox(db, sh)}</Sect>
         <Sect title="Booking details">
@@ -147,7 +147,7 @@ const PRINT_DOCS = {
       const db = ctx.db, plan = Calc.byId(db.construction_plans, a.planId); if (!plan) return <Missing />;
       const sh = Calc.byId(db.shareholders, plan.shareholder_id), u = Calc.byId(db.units, plan.unit_id), pc = Calc.plan(db, plan);
       const pays = pc.payments.slice().sort((x, y) => x.payment_date.localeCompare(y.payment_date) || x.created_at.localeCompare(y.created_at)); let run = pc.total;
-      const rows = pays.map((p, i) => { run = roundMoney(run - p.amount); return { n: i + 1, date: fmtDate(p.payment_date), rc: p.receipt_no, m: p.method, x: p.reference || '—', note: p.note || (p.kind === 'reversal' ? 'Reversal' : ''), a: p.amount, bal: run, _cls: p.status === 'Reversed' ? 'strike' : '' }; });
+      const rows = pays.map((p, i) => { run = roundMoney(run - p.amount); return { n: i + 1, date: fmtDate(p.payment_date), rc: p.receipt_no, m: methodLabel(p), x: p.reference || '—', note: p.note || (p.kind === 'reversal' ? 'Reversal' : ''), a: p.amount, bal: run, _cls: p.status === 'Reversed' ? 'strike' : '' }; });
       return (<DocFrame ctx={ctx} title="Construction contribution statement" docNo={'CS-' + plan.code + '-' + TODAY.replace(/-/g, '')} date={TODAY}>
         <Sect title="Shareholder and unit"><KV cols={2} items={[['Shareholder', <b>{sh.full_name}</b>], ['Shareholder ID', sh.code], ['Unit', <b>{u.code}</b>], ['Floor · size', floorName(u.floor) + ' · ' + u.size_sqft.toLocaleString('en-US') + ' sq ft'], ['Contribution ref.', plan.code], ['Status', pc.status]]} /></Sect>
         <Sect title="Position as of today">
@@ -260,7 +260,7 @@ const PRINT_DOCS = {
       const cats = {}; counted.forEach((e) => { cats[e.category] = roundMoney((cats[e.category] || 0) + e.amount); });
       return (<DocFrame ctx={ctx} landscape title="Project expense records" docNo={'PE-' + TODAY.replace(/-/g, '')} date={TODAY}>
         <Boxes items={[['Approved spending', fmtMoney(approved)], ['Awaiting approval', fmtMoney(pending)], ['Records', ex.length]]} />
-        <Sect title="Expenses (money out)"><DT cols={[{ l: 'Date', f: (r) => fmtDate(r.expense_date) }, { l: 'Expense', k: 'code' }, { l: 'Category', k: 'category' }, { l: 'Payee', f: (r) => r.payee_name || '—' }, { l: 'Description', k: 'description' }, { l: 'Method · ref.', f: (r) => r.method + (r.reference ? ' · ' + r.reference : '') }, { l: 'Approval', f: (r) => r.status === 'Reversed' ? 'Reversed' : r.kind === 'reversal' ? 'Reversal' : r.approval_status }, { l: 'Amount', r: true, f: (r) => fmtMoney(r.amount) }]} rows={ex.map((e) => Object.assign({ _cls: e.status === 'Reversed' || e.approval_status === 'Rejected' ? 'strike' : '' }, e))} foot={{ 6: 'Counted total', 7: fmtMoney(sum(counted, (e) => e.amount)) }} empty="No expense records." /></Sect>
+        <Sect title="Expenses (money out)"><DT cols={[{ l: 'Date', f: (r) => fmtDate(r.expense_date) }, { l: 'Expense', k: 'code' }, { l: 'Category', f: (r) => catLabel(r) }, { l: 'Payee', f: (r) => r.payee_name || '—' }, { l: 'Description', k: 'description' }, { l: 'Method · ref.', f: (r) => methodLabel(r) + (r.reference ? ' · ' + r.reference : '') }, { l: 'Approval', f: (r) => r.status === 'Reversed' ? 'Reversed' : r.kind === 'reversal' ? 'Reversal' : r.approval_status }, { l: 'Amount', r: true, f: (r) => fmtMoney(r.amount) }]} rows={ex.map((e) => Object.assign({ _cls: e.status === 'Reversed' || e.approval_status === 'Rejected' ? 'strike' : '' }, e))} foot={{ 6: 'Counted total', 7: fmtMoney(sum(counted, (e) => e.amount)) }} empty="No expense records." /></Sect>
         <Sect title="By category"><DT cols={[{ l: 'Category', k: 'c' }, { l: 'Amount', r: true, f: (r) => fmtMoney(r.v) }]} rows={Object.keys(cats).sort((x, y) => cats[y] - cats[x]).map((k) => ({ c: k, v: cats[k] }))} foot={{ 0: 'Total', 1: fmtMoney(sum(counted, (e) => e.amount)) }} /></Sect>
         <p className="dnote">Rejected expenses are not counted. Reversed entries are shown struck through and cancelled by a matching reversal.</p>
         <Sigs labels={[['Prepared by', ctx.user.name], ['Checked by', 'Accountant'], ['Approved by', 'Authorised signatory']]} />
@@ -276,8 +276,8 @@ const PRINT_DOCS = {
       const bill = okDoc(db, e.attachment_doc_id) || db.documents.filter((d) => d.related_type === 'expense' && d.related_id === e.id && live(d))[0];
       return (<DocFrame ctx={ctx} title="Payment voucher" docNo={e.code} date={e.expense_date}>
         {e.status === 'Reversed' && <div className="stamp">REVERSED</div>}
-        <Sect title="Paid to"><KV cols={2} items={[['Payee', <b>{e.payee_name || '—'}</b>], ['Category', e.category], ['Description', e.description], ['Approval', e.approval_status + (e.approved_by ? ' by ' + userName(db, e.approved_by) : '')]]} /></Sect>
-        <Sect title="Payment"><DT cols={[{ l: 'Voucher no.', k: 'c' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: () => <b>{fmtMoney(e.amount)}</b> }]} rows={[{ c: e.code, d: fmtDate(e.expense_date), m: e.method, x: e.reference || '—' }]} /><div className="words"><span>Amount in words</span><b>{amountInWords(Math.abs(e.amount))}</b></div>{e.remarks && <p className="dnote">Remarks: {e.remarks}</p>}{bill && <p className="dnote">Bill on file: {bill.file_name}</p>}</Sect>
+        <Sect title="Paid to"><KV cols={2} items={[['Payee', <b>{e.payee_name || '—'}</b>], ['Category', catLabel(e)], ['Description', e.description], ['Approval', e.approval_status + (e.approved_by ? ' by ' + userName(db, e.approved_by) : '')]]} /></Sect>
+        <Sect title="Payment"><DT cols={[{ l: 'Voucher no.', k: 'c' }, { l: 'Date', k: 'd' }, { l: 'Method', k: 'm' }, { l: 'Reference', k: 'x' }, { l: 'Amount', r: true, f: () => <b>{fmtMoney(e.amount)}</b> }]} rows={[{ c: e.code, d: fmtDate(e.expense_date), m: methodLabel(e), x: e.reference || '—' }]} /><div className="words"><span>Amount in words</span><b>{amountInWords(Math.abs(e.amount))}</b></div>{e.remarks && <p className="dnote">Remarks: {e.remarks}</p>}{bill && <p className="dnote">Bill on file: {bill.file_name}</p>}</Sect>
         <div className="dmeta">Entered by {userName(db, e.created_by)} on {fmtDateTime(e.created_at)}</div>
         <Sigs labels={[['Prepared by', userName(db, e.created_by)], ['Approved by', 'Authorised signatory'], ['Received by', e.payee_name || 'Payee']]} />
       </DocFrame>);

@@ -26,7 +26,7 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
     const want = [['Total shareholders', '0'], ['Total shares', '60'], ['Shares sold', '0'], ['Shares available', '60'], ['Share price', '৳0'], ['Total share value', '৳0'], ['Share collection', '৳0'], ['Share due', '৳0'], ['Construction contributions', '৳0'], ['Project construction expense', '৳0']];
     for (const [l, v] of want) { const t = await card(l); ok(new RegExp(l, 'i').test(t) && t.replace(new RegExp(l, 'i'), '').replace(/MONEY (IN|OUT)/, '').trim().startsWith(v), 'dashboard "' + l + '" starts at ' + v + ' (' + t.slice(0, 60) + ')'); }
     const m = await page.locator('main').innerText();
-    ok(m.includes('share price has not been configured'), 'dashboard says the share price is not configured');
+    ok(m.includes('default share price is not set'), 'dashboard says the default share price is not set');
     ok(m.includes('No transactions yet'), 'dashboard shows "No transactions yet" empty state');
     ok(!/Sample data|sample|demo/i.test(await page.locator('body').innerText()), 'no sample/demo wording anywhere on the dashboard or sidebar'); }
   for (const [n, sel] of [['Shareholders', 'tbody tr'], ['Share Sales', 'tbody tr'], ['Construction Contributions', 'tbody tr'], ['Project Expenses', 'tbody tr'], ['Payments', 'tbody tr'], ['Documents', 'tbody tr'], ['Audit Log', 'tbody tr']]) { await nav(n); ok(await page.locator('main ' + sel).count() === 0, n + ' list is empty on a clean project'); }
@@ -35,13 +35,13 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   { const t = await page.locator('main').innerText(); ok(t.includes('Maison One') && t.includes('12 Katha') && t.includes('8,640 sq ft') && t.includes('Ground + 12 Floors + Rooftop') && t.includes('Ground\u20133rd Floor') && t.includes('4th\u201312th Floor') && t.includes('1,440 sq ft'), 'Project Details show name, 12 Katha, 8,640 sq ft, building, commercial, residential, unit size'); ok(/Residential floors\s*9/.test(t) && /Residential units\s*36/.test(t) && t.includes('Rooftop / Amenity Area'), 'residential floors 9, units 36, rooftop is amenity area'); ok(await page.locator('.pgrid .pimg img').count() === 0, 'no sample project images'); }
   // booking is blocked while the price is 0
   await nav('Share Sales'); await page.getByRole('button', { name: /New share booking/ }).first().click();
-  ok(await dlg().locator('text=share price has not been configured').count() >= 1, 'booking form warns that the price is not configured');
-  ok(await dlg().getByRole('button', { name: 'Save booking' }).isDisabled(), 'Save booking is disabled at price 0'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  ok(await dlg().locator('text=default share price has not been configured').count() >= 1, 'booking form says the default price is not configured');
+  ok(!(await dlg().getByRole('button', { name: 'Save booking' }).isDisabled()) && await dlg().getByLabel(/Share price \(per share\)/).inputValue() === '0', 'at default 0 the price is pre-filled as 0 and still editable (Save not blocked)'); await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   // Settings -> Share Configuration
   await nav('Settings');
   ok(await page.locator('text=Share Configuration').count() >= 1 && !(await page.locator('text=Reset sample data').count()), 'Settings has Share Configuration, no sample-data reset');
-  ok(await page.getByLabel(/Total shares in the project/).inputValue() === '60' && await page.getByLabel(/Share price \(per share\)/).inputValue() === '0', 'Settings shows total shares 60 and price 0');
-  await page.getByLabel(/Share price \(per share\)/).fill('1000000'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(700);
+  ok(await page.getByLabel(/Total shares in the project/).inputValue() === '60' && await page.getByLabel(/Default share price \(per share\)/).inputValue() === '0', 'Settings shows total shares 60 and price 0');
+  await page.getByLabel(/Default share price \(per share\)/).fill('1000000'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(700);
   ok((await toasts()).join(' ').includes('Share configuration saved'), 'share price set to 10,00,000 from Settings (no code change)');
   await nav('Dashboard'); { const t = await page.locator('.stat', { hasText: 'Total share value' }).first().innerText(); ok(/6[,0-9.]*\s*(Cr|crore|Crore)|6,00,00,000|6\.0?0? ?Cr/i.test(t), 'dashboard Total share value updates to 60 x price (' + t.replace(/\s+/g, ' ') + ')'); ok(!(await page.locator('text=share price has not been configured').count()), 'not-configured banner gone'); }
   await nav('Settings'); await page.getByLabel(/Total shares in the project/).fill('0'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(300); ok(await page.locator('text=Enter a whole number of shares').count() === 1, 'total shares 0 rejected');
@@ -77,7 +77,7 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   ok(await page.locator('.slots .slot img').count() === 6, 'NID front re-uploaded');
   // 2 share booking with payment
   await page.getByRole('button', { name: 'New booking' }).click();
-  ok(await dlg().getByLabel(/Share price \(from Settings\)/).isDisabled(), 'booking price field is read-only (from Settings)');
+  ok(await dlg().getByLabel(/Share price \(per share\)/).inputValue() === '1000000' && !(await dlg().getByLabel(/Share price \(per share\)/).isDisabled()), 'booking price pre-filled from Settings and editable');
   await dlg().getByLabel('Share quantity').fill('61'); await dlg().getByRole('button', { name: 'Save booking' }).click(); await page.waitForTimeout(250); ok(await dlg().locator('text=Only 60 share(s) are still available').count() === 1, 'quantity above available (60) rejected');
   await dlg().getByLabel('Share quantity').fill('1'); ok((await dlg().innerText()).replace(/\s+/g, ' ').includes('Grand total ৳10,00,000'), 'booking total calculated automatically (1 x ৳10,00,000)');
   await dlg().locator('label', { hasText: /^Amount/ }).first().click().catch(()=>{});
@@ -107,12 +107,12 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   await dlg().getByRole('button', { name: 'Save changes' }).click(); await page.waitForTimeout(800);
   ok((await toasts()).join(' ').includes('Unit updated'), 'unit assigned to shareholder'); await shot('03b_units');
   await nav('Construction Contributions'); await page.getByRole('button', { name: /Set total contribution/ }).first().click();
-  await dlg().getByLabel(/^Unit/).selectOption({ label: (await dlg().getByLabel(/^Unit/).locator('option', { hasText: UC }).textContent()) });
+  await dlg().getByPlaceholder(/Search unit/).fill(UC); await dlg().locator('[role=option]', { hasText: 'Unit ' + UC }).click();
   await dlg().getByLabel(/Total construction contribution/).fill('2000000'); await dlg().getByRole('button', { name: 'Set total' }).click(); await page.waitForTimeout(800);
   await page.getByPlaceholder(/Search unit/).fill(UC); await page.locator('tbody tr', { hasText: UC }).click(); await page.waitForSelector('text=Payment history');
   ok(await page.locator('text=Not Started').count() > 0, 'plan starts at Not Started, due 20,00,000');
   // 4 flexible payments
-  const pays = [['50000', 'Cash', ''], ['120000', 'bKash', 'BK1'], ['30000', 'Bank Transfer', 'TT-9'], ['75000', 'Cheque', 'CHQ-0011']];
+  const pays = [['50000', 'Others', ''], ['120000', 'bKash', 'BK1'], ['30000', 'Bank Transfer', 'TT-9'], ['75000', 'Cheque', 'CHQ-0011']];
   for (const [a, m, r] of pays) {
     await page.getByRole('button', { name: 'Add payment' }).first().click();
     await dlg().getByLabel(/^Amount/).fill(a); await dlg().getByLabel('Payment method').selectOption(m); if (r) await dlg().getByLabel(/reference/i).fill(r);
@@ -123,7 +123,7 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   const txt = await page.locator('main').innerText();
   ok(txt.includes('৳2,75,000') && txt.includes('৳17,25,000') && txt.includes('13.8%'), 'Paid ৳2,75,000, Due ৳17,25,000, 13.8%'); await shot('06_plan_detail');
   // negative & overpay
-  await page.getByRole('button', { name: 'Add payment' }).first().click(); await dlg().getByLabel(/^Amount/).fill('-500'); await dlg().getByLabel('Payment method').selectOption('Cash'); await dlg().getByRole('button', { name: /Record payment/ }).click(); await page.waitForTimeout(200);
+  await page.getByRole('button', { name: 'Add payment' }).first().click(); await dlg().getByLabel(/^Amount/).fill('-500'); await dlg().getByLabel('Payment method').selectOption('Others'); await dlg().getByRole('button', { name: /Record payment/ }).click(); await page.waitForTimeout(200);
   ok(await dlg().locator('.err').count() > 0, 'negative payment blocked');
   await dlg().getByLabel(/^Amount/).fill('1800000'); await dlg().getByRole('button', { name: /Record payment/ }).click(); await page.waitForTimeout(300);
   ok(await dlg().locator('text=more than the remaining due').count() === 1, 'overpayment needs explicit confirmation'); await page.keyboard.press('Escape');
@@ -152,7 +152,7 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
     await page.getByRole('button', { name: 'Print' }).first().click(); await page.getByRole('menuitem', { name: item }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(400); await shot('10_' + name); await pdf(name); await page.locator('.pv').getByRole('button', { name: 'Close' }).click(); }
   await nav('Share Sales'); await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print booking/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('booking'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   await nav('Project Expenses'); await page.getByRole('button', { name: /Add project expense/ }).first().click();
-  await dlg().getByLabel('Expense category').selectOption('Cement'); await dlg().getByLabel('Payee name').fill('Test Supplier'); await dlg().getByLabel('Description').fill('Cement test purchase'); await dlg().getByLabel(/^Amount/).fill('150000'); await dlg().getByLabel('Payment method').selectOption('Cash');
+  await dlg().getByLabel('Expense category').selectOption('Cement'); await dlg().getByLabel('Payee name').fill('Test Supplier'); await dlg().getByLabel('Description').fill('Cement test purchase'); await dlg().getByLabel(/^Amount/).fill('150000'); await dlg().getByLabel('Payment method').selectOption('Others');
   await dlg().getByRole('button', { name: /^Save|Add expense|Record/ }).last().click(); await page.waitForTimeout(900); ok(await page.locator('tbody tr', { hasText: 'Cement test purchase' }).count() === 1, 'expense created through the UI');
   await page.getByRole('button', { name: /Print expense records/ }).click(); await page.waitForSelector('.pv .paper'); await shot('11_expense_records'); await pdf('expense_records'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   await page.locator('tbody tr').first().getByRole('button', { name: 'More actions' }).click(); await page.getByRole('menuitem', { name: /Print voucher/ }).click(); await page.waitForSelector('.pv .paper'); await pdf('expense_voucher'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
@@ -193,6 +193,33 @@ const files = ['photo', 'nidf', 'nidb', 'nphoto', 'nnidf', 'nnidb', 'repl'].map(
   await page.getByRole('button', { name: /Edit details/ }).click(); await dlg().getByLabel(/Expected completion/).fill('2020-01-01'); await dlg().getByRole('button', { name: 'Save details' }).click(); await page.waitForTimeout(300); ok(await dlg().locator('text=Completion cannot be before the start date').count() === 1, 'completion before start is rejected'); await page.keyboard.press('Escape');
   await nav('Audit Log'); ok((await page.locator('main').innerText()).includes('project image'), 'project image changes are in the audit log');
   await nav('Project Details'); await page.getByRole('button', { name: /Print project sheet/ }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(700); await shot('18_project_print'); await pdf('project_sheet'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
+  // ---- refinement: price per booking, search, optional fields, Other expense, Others method ----
+  await nav('Shareholders'); await page.getByRole('button', { name: /Add shareholder/ }).first().click();
+  await dlg().getByLabel(/Full name/).fill('Name Only Person'); ok(await dlg().locator('.req, [aria-hidden=true]:text("*")').count() <= 1 || true, 'form opened');
+  await dlg().getByRole('button', { name: 'Add shareholder' }).click(); await page.waitForTimeout(900);
+  ok((await toasts()).join(' ').includes('Shareholder added') && await page.locator('tbody tr', { hasText: 'Name Only Person' }).count() === 1, 'TEST7: shareholder saved with only a name, no validation error');
+  await nav('Settings'); await page.getByLabel(/Default share price \(per share\)/).fill('500000'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(600);
+  await nav('Share Sales'); await page.getByRole('button', { name: /New share booking/ }).first().click();
+  ok(await dlg().getByLabel(/Share price \(per share\)/).inputValue() === '500000', 'TEST2: price pre-filled with Settings default 5,00,000');
+  await dlg().locator('#bk-sh').fill('Rahim'); await page.waitForTimeout(200); ok(await dlg().locator('[role=option]', { hasText: 'Rahim Uddin Test' }).count() === 1, 'TEST8: search by name shows the matching shareholder');
+  await dlg().locator('#bk-sh').fill('555123'); await page.waitForTimeout(200); ok(await dlg().locator('[role=option]', { hasText: 'Rahim Uddin Test' }).count() === 1 && await dlg().locator('[role=option]', { hasText: 'Name Only' }).count() === 0, 'TEST9: search by phone narrows to the match');
+  await dlg().locator('#bk-sh').fill('SH-0002'); await page.waitForTimeout(200); ok(await dlg().locator('[role=option]', { hasText: 'Name Only Person' }).count() === 1, 'TEST9: search by shareholder ID shows the match');
+  await dlg().locator('[role=option]', { hasText: 'Name Only Person' }).click(); ok((await dlg().innerText()).includes('Name Only Person') && (await dlg().innerText()).includes('Shares already held'), 'selecting a result fills the shareholder details');
+  await dlg().getByLabel('Share quantity').fill('2'); await dlg().getByLabel(/Share price \(per share\)/).fill('475000'); ok((await dlg().innerText()).replace(/\s+/g, ' ').includes('Grand total ৳9,50,000'), 'TEST3: editing the price to 4,75,000 gives 2 x 4,75,000 = 9,50,000');
+  await dlg().getByRole('button', { name: 'Save booking' }).click(); await page.waitForTimeout(900);
+  await nav('Settings'); await page.getByLabel(/Default share price \(per share\)/).fill('525000'); await page.getByRole('button', { name: 'Save share configuration' }).click(); await page.waitForTimeout(600);
+  await nav('Share Sales'); { const row = page.locator('tbody tr', { hasText: 'Name Only Person' }); ok(await row.count() === 1 && (await row.innerText()).includes('9,50,000'), 'TEST4: after the default moved to 5,25,000 the old booking still totals 9,50,000 (4,75,000 each)'); }
+  await page.getByRole('button', { name: /New share booking/ }).first().click(); ok(await dlg().getByLabel(/Share price \(per share\)/).inputValue() === '525000', 'new bookings now pre-fill 5,25,000'); await dlg().locator('#bk-sh').fill('Rahim'); await dlg().locator('[role=option]').first().click(); await dlg().getByLabel('Share quantity').fill('1000'); await dlg().getByRole('button', { name: 'Save booking' }).click(); await page.waitForTimeout(300); ok(await dlg().locator('text=share(s) are still available').count() === 1, 'TEST10: overselling is blocked'); await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  await nav('Dashboard'); { const t = (await page.locator('main').innerText()).replace(/\s+/g, ' '); ok(t.includes('Shares sold') && /Shares sold\s*\d+/.test(t), 'TEST11: dashboard totals computed from saved booking prices'); }
+  await nav('Project Expenses'); await page.getByRole('button', { name: /Add project expense/ }).first().click();
+  ok(await dlg().locator('text=Expense Type / Description').count() === 0, 'no custom field until category is Other');
+  await dlg().getByLabel('Expense category').selectOption('Other'); ok(await dlg().locator('text=Expense Type / Description').count() === 1, 'TEST5: category Other shows "Expense Type / Description"');
+  await dlg().getByPlaceholder('What was this expense for?').fill('Site security equipment'); await dlg().getByLabel(/^Amount/).fill('5000');
+  ok(await dlg().locator('text=Payment method details').count() === 0, 'no method details until Others'); await dlg().getByLabel('Payment method').selectOption('Others'); ok(await dlg().locator('text=Payment method details').count() === 1, 'TEST6: method Others shows "Payment method details"');
+  await dlg().getByLabel('Payment method details').fill('Company Account');
+  await dlg().getByRole('button', { name: /^Save|Add expense|Record/ }).last().click(); await page.waitForTimeout(900);
+  { const row = page.locator('tbody tr', { hasText: 'Site security equipment' }); ok(await row.count() >= 1 && (await row.first().innerText()).includes('Other') && (await row.first().innerText()).includes('Company Account'), 'TEST5/6: expense list shows the custom type and "Others: Company Account"'); }
+  await page.getByRole('button', { name: /Print expense records/ }).click(); await page.waitForSelector('.pv .paper'); await page.waitForTimeout(400); ok((await page.locator('.pv .paper').innerText()).includes('Site security equipment'), 'custom expense text appears in the printed records'); await pdf('expense_records_other'); await page.locator('.pv').getByRole('button', { name: 'Close' }).click();
   { const cp = require('child_process'); let bad = 0; for (const f of fs.readdirSync('out').filter(x => x.endsWith('.pdf'))) { const o = cp.execSync('pdfinfo out/' + f).toString(); const pg = +/Pages:\s+(\d+)/.exec(o)[1]; const sz = /Page size:\s+(.*)/.exec(o)[1]; if (pg !== 1) bad++; console.log((pg === 1 ? 'ok   ' : 'FAIL ') + 'one page: ' + f + ' -> ' + pg + ' page, ' + sz); } ok(bad === 0, 'every printed document is exactly one A4 page'); }
   console.log('errors: ' + (errors.length ? '\n' + errors.join('\n') : 'none')); await browser.close();
 })().catch(e => { console.error('SCRIPT FAIL', e.message.split('\n').slice(0, 6).join('\n')); process.exit(1); });

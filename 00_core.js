@@ -13,7 +13,11 @@ const APP_CONFIG = {
 };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const METHODS = ['Bank Transfer','bKash','Cash','Cheque'];
+const METHODS = ['Account Transfer','Bank Transfer','BEFTN','RTGS','Cheque','NPSB','Mobile Banking','bKash','Nagad','Rocket','Upay','Others'];
+/* Display text for a payment method. 'Others' shows the optional free-text details saved with the record. */
+function methodLabel(r) { if (!r || !r.method) return '—'; return r.method === 'Others' && r.method_details ? 'Others: ' + r.method_details : r.method; }
+/* Display text for an expense category. 'Other' shows the custom expense type typed by the user. */
+function catLabel(e) { if (!e) return '—'; return e.category === 'Other' && e.other_description ? 'Other: ' + e.other_description : (e.category || '—'); }
 const EXPENSE_CATEGORIES = ['Contractor Payment','Materials','Labor','Electrical','Plumbing','Structural','Tiles','Cement','Steel','Lift','Generator','Interior','Engineering','Government / Approval','Transportation','Other'];
 /* Fixed building plan. Only floors 4 to 12 hold residential units (4 per floor, 1,440 sq ft each = 36 units). */
 const UNIT_SIZE_SQFT = 1440, UNIT_LETTERS = ['A', 'B', 'C', 'D'], RES_FLOORS = [4, 5, 6, 7, 8, 9, 10, 11, 12];

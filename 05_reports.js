@@ -18,7 +18,7 @@ const REPORTS = [
   {
     id: 'share_collection', title: 'Share Collection Report', desc: 'Every land-share payment received, including reversals.', file: 'share_collection_report', statuses: ['Posted', 'Reversed'], dateLabel: 'Payment date',
     cols: [{ k: 'receipt', l: 'Receipt' }, { k: 'date', l: 'Date', t: 'date' }, { k: 'name', l: 'Shareholder' }, { k: 'booking', l: 'Booking' }, { k: 'amount', l: 'Amount', t: 'money', total: true }, { k: 'method', l: 'Method' }, { k: 'ref', l: 'Reference' }, { k: 'type', l: 'Entry' }, { k: 'status', l: 'Status', t: 'badge' }],
-    build: function (db) { return db.share_payments.filter(live).map(function (p) { const sh = Calc.byId(db.shareholders, p.shareholder_id), b = Calc.byId(db.share_bookings, p.booking_id); return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, booking: b.code, amount: p.amount, method: p.method, ref: p.reference || '—', type: p.kind === 'reversal' ? 'Reversal' : 'Payment', status: p.status }; }).sort(byDateDesc('date')); }
+    build: function (db) { return db.share_payments.filter(live).map(function (p) { const sh = Calc.byId(db.shareholders, p.shareholder_id), b = Calc.byId(db.share_bookings, p.booking_id); return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, booking: b.code, amount: p.amount, method: methodLabel(p), ref: p.reference || '—', type: p.kind === 'reversal' ? 'Reversal' : 'Payment', status: p.status }; }).sort(byDateDesc('date')); }
   },
   {
     id: 'share_due', title: 'Share Due Report', desc: 'Bookings with an unpaid balance, largest due first.', file: 'share_due_report', statuses: ['Partial', 'Unpaid'], dateLabel: 'Booking date',
@@ -33,7 +33,7 @@ const REPORTS = [
   {
     id: 'cons_collection', title: 'Construction Collection Report', desc: 'Every construction contribution payment received, including reversals.', file: 'construction_collection_report', statuses: ['Posted', 'Reversed'], dateLabel: 'Payment date',
     cols: [{ k: 'receipt', l: 'Receipt' }, { k: 'date', l: 'Date', t: 'date' }, { k: 'name', l: 'Shareholder' }, { k: 'unit', l: 'Unit' }, { k: 'amount', l: 'Amount', t: 'money', total: true }, { k: 'method', l: 'Method' }, { k: 'ref', l: 'Reference' }, { k: 'type', l: 'Entry' }, { k: 'status', l: 'Status', t: 'badge' }],
-    build: function (db) { return db.construction_payments.filter(live).map(function (p) { const sh = Calc.byId(db.shareholders, p.shareholder_id), u = Calc.byId(db.units, p.unit_id); return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, unit: u.code, amount: p.amount, method: p.method, ref: p.reference || '—', type: p.kind === 'reversal' ? 'Reversal' : 'Payment', status: p.status }; }).sort(byDateDesc('date')); }
+    build: function (db) { return db.construction_payments.filter(live).map(function (p) { const sh = Calc.byId(db.shareholders, p.shareholder_id), u = Calc.byId(db.units, p.unit_id); return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, unit: u.code, amount: p.amount, method: methodLabel(p), ref: p.reference || '—', type: p.kind === 'reversal' ? 'Reversal' : 'Payment', status: p.status }; }).sort(byDateDesc('date')); }
   },
   {
     id: 'cons_due', title: 'Construction Due Report', desc: 'Units that still owe construction contribution, largest balance first.', file: 'construction_due_report', statuses: ['In Progress', 'Not Started'], dateLabel: 'Contribution set on',
@@ -43,7 +43,7 @@ const REPORTS = [
   {
     id: 'expenses', title: 'Project Expense Report', desc: 'All money paid out by the project, with approval status.', file: 'project_expense_report', statuses: ['Approved', 'Pending', 'Rejected'], dateLabel: 'Expense date',
     cols: [{ k: 'code', l: 'Expense' }, { k: 'date', l: 'Date', t: 'date' }, { k: 'category', l: 'Category' }, { k: 'payee', l: 'Payee' }, { k: 'desc', l: 'Description' }, { k: 'amount', l: 'Amount', t: 'money', total: true }, { k: 'method', l: 'Method' }, { k: 'entry', l: 'Entry' }, { k: 'status', l: 'Approval', t: 'badge' }],
-    build: function (db) { return db.project_expenses.filter(live).map(function (e) { return { code: e.code, date: e.expense_date, category: e.category, payee: e.payee_name || '—', desc: e.description, amount: e.approval_status === 'Rejected' ? 0 : e.amount, method: e.method, entry: e.kind === 'reversal' ? 'Reversal' : e.status === 'Reversed' ? 'Reversed' : 'Expense', status: e.approval_status }; }).sort(byDateDesc('date')); }
+    build: function (db) { return db.project_expenses.filter(live).map(function (e) { return { code: e.code, date: e.expense_date, category: catLabel(e), payee: e.payee_name || '—', desc: e.description, amount: e.approval_status === 'Rejected' ? 0 : e.amount, method: methodLabel(e), entry: e.kind === 'reversal' ? 'Reversal' : e.status === 'Reversed' ? 'Reversed' : 'Expense', status: e.approval_status }; }).sort(byDateDesc('date')); }
   },
   {
     id: 'contractors', title: 'Contractor Payment Report', desc: 'Contract installments with paid, due and upcoming amounts per contractor.', file: 'contractor_payment_report', statuses: ['Paid', 'Overdue', 'Pending', 'Upcoming', 'Partial'], dateLabel: 'Installment due date',

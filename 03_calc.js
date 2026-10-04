@@ -106,7 +106,7 @@ const Calc = {
   },
   notifications: function (db) {
     const d = Calc.dashboard(db), out = [];
-    if (!d.priceSet) out.push({ tone: 'warn', title: 'Share price is not configured yet', text: 'Set it in Settings > Share Configuration before taking bookings', go: ['settings'] });
+    if (!d.priceSet) out.push({ tone: 'info', title: 'Default share price is not set', text: 'Optional: set a default in Settings > Share Configuration. A price can still be entered on each booking.', go: ['settings'] });
     if (d.consNotStarted) out.push({ tone: 'info', title: d.consNotStarted + ' unit' + (d.consNotStarted > 1 ? 's' : '') + ' with no construction payment yet', text: 'Contribution set, nothing received', go: ['construction'] });
     const pend = db.project_expenses.filter(function (e) { return live(e) && e.approval_status === 'Pending'; });
     if (pend.length) out.push({ tone: 'warn', title: pend.length + ' expense' + (pend.length > 1 ? 's' : '') + ' awaiting approval', text: fmtMoney(sum(pend, function (e) { return e.amount; })) + ' pending', go: ['expenses'] });
@@ -132,10 +132,9 @@ const V = {
   shareholder: function (f, n) {
     const e = {};
     if (!String(f.full_name || '').trim()) e.full_name = 'Enter the full name.';
-    if (!String(f.phone || '').trim()) e.phone = 'Enter a phone number.'; else if (!V.phone(f.phone)) e.phone = 'Use a Bangladesh mobile number, e.g. 01711-000000.';
+    if (String(f.phone || '').trim() && !V.phone(f.phone)) e.phone = 'Use a Bangladesh mobile number, e.g. 01711-000000.';
     if (!V.email(f.email)) e.email = 'Enter a valid email address.';
-    if (!String(f.nid || '').trim()) e.nid = 'Enter the NID number.'; else if (!V.nid(f.nid)) e.nid = 'NID must be 10, 13 or 17 digits.';
-    if (!f.registration_date) e.registration_date = 'Choose a registration date.';
+    if (String(f.nid || '').trim() && !V.nid(f.nid)) e.nid = 'NID must be 10, 13 or 17 digits.';
     if (n && n.phone && !V.phone(n.phone)) e.nominee_phone = 'Use a Bangladesh mobile number.';
     if (n && n.nid && !V.nid(n.nid)) e.nominee_nid = 'NID must be 10, 13 or 17 digits.';
     return e;
@@ -144,8 +143,6 @@ const V = {
     const e = {};
     V.amount(f.amount, e, 'amount');
     if (!f.payment_date) e.payment_date = 'Choose the payment date.'; else if (f.payment_date > TODAY) e.payment_date = 'Payment date cannot be in the future.';
-    if (!f.method) e.method = 'Choose a payment method.';
-    if (f.method && f.method !== 'Cash' && !String(f.reference || '').trim()) e.reference = 'Enter the transaction or cheque reference.';
     return e;
   },
   booking: function (f, ctx) {
@@ -154,9 +151,9 @@ const V = {
     const q = Number(f.quantity);
     if (!f.quantity || isNaN(q) || q < 1 || Math.floor(q) !== q) e.quantity = 'Enter a whole number of shares, at least 1.';
     else if (q > ctx.available) e.quantity = 'Only ' + ctx.available + ' share(s) are still available.';
-    const p = Number(f.unit_price); if (!f.unit_price || isNaN(p) || p <= 0) e.unit_price = 'The share price has not been configured. Set it in Settings > Share Configuration.';
+    const p = Number(f.unit_price); if (!f.unit_price || isNaN(p) || p <= 0) e.unit_price = 'Enter the price per share for this booking.';
     const dsc = Number(f.discount || 0); if (isNaN(dsc) || dsc < 0) e.discount = 'Discount cannot be negative.'; else if (!e.quantity && !e.unit_price && dsc > q * p) e.discount = 'Discount cannot exceed the total value.';
-    if (!f.booking_date) e.booking_date = 'Choose the booking date.'; else if (f.booking_date > TODAY) e.booking_date = 'Booking date cannot be in the future.';
+    if (f.booking_date && f.booking_date > TODAY) e.booking_date = 'Booking date cannot be in the future.';
     return e;
   },
   unit: function (f, ctx) {
@@ -187,12 +184,8 @@ const V = {
   expense: function (f, ctx) {
     const e = {};
     if (!f.category) e.category = 'Choose a category.';
-    if (!String(f.description || '').trim()) e.description = 'Add a short description.';
     V.amount(f.amount, e, 'amount');
     if (!f.expense_date) e.expense_date = 'Choose the date.'; else if (f.expense_date > TODAY) e.expense_date = 'Date cannot be in the future.';
-    if (!f.method) e.method = 'Choose a payment method.';
-    if (f.method && f.method !== 'Cash' && !String(f.reference || '').trim()) e.reference = 'Enter the transaction or cheque reference.';
-    if (!f.contractor_id && !String(f.payee_name || '').trim()) e.payee_name = 'Choose a contractor/supplier or type the payee name.';
     return e;
   },
   contractor: function (f, rows) {

@@ -115,6 +115,24 @@ function Money({ value, onChange, ...rest }) { return (<div className="money"><s
 function Sel({ value, onChange, options, placeholder, ...rest }) {
   return (<select className="inp" value={value} onChange={(e) => onChange(e.target.value)} {...rest}>{placeholder !== undefined && <option value="">{placeholder}</option>}{options.map((o) => typeof o === 'string' ? <option key={o} value={o}>{o}</option> : <option key={o.value} value={o.value}>{o.label}</option>)}</select>);
 }
+/* Searchable picker. options: [{ value, label, sub, search }]. Matches any word typed against label, sub and search text (name, ID, phone, unit...). Shows the first 50 matches so it stays fast with many records. */
+function SearchPick({ value, onChange, options, placeholder, disabled, emptyText, id, clearLabel }) {
+  const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [hi, setHi] = useState(0); const ref = useRef(null);
+  const cur = options.filter((o) => o.value === value)[0];
+  const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = options.filter((o) => { const hay = ((o.label || '') + ' ' + (o.sub || '') + ' ' + (o.search || '')).toLowerCase(); return terms.every((t) => hay.indexOf(t) >= 0); }).slice(0, 50);
+  useEffect(() => { const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
+  const pick = (o) => { onChange(o.value); setQ(''); setOpen(false); };
+  if (cur && !open) return (<div className="sp-sel inp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><span><b>{cur.label}</b>{cur.sub ? <span className="muted"> · {cur.sub}</span> : null}</span>{!disabled && <button type="button" className="link" aria-label={clearLabel || 'Change selection'} onClick={() => { onChange(''); setOpen(true); }}>Change</button>}</div>);
+  return (<div ref={ref} style={{ position: 'relative' }}>
+    <input id={id} className="inp" type="text" role="combobox" aria-expanded={open} aria-autocomplete="list" autoComplete="off" disabled={disabled} placeholder={placeholder || 'Type to search'} value={q}
+      onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); setHi(0); }}
+      onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, hits.length - 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); } else if (e.key === 'Enter' && open && hits[hi]) { e.preventDefault(); pick(hits[hi]); } else if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }} />
+    {open && <ul role="listbox" className="sp-list" style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 60, maxHeight: 260, overflowY: 'auto', margin: 0, padding: 4, listStyle: 'none', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d8dde3)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)' }}>
+      {hits.length ? hits.map((o, i) => <li key={o.value} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pick(o); }} onMouseEnter={() => setHi(i)} style={{ padding: '7px 10px', borderRadius: 6, cursor: 'pointer', background: i === hi ? 'var(--hover, rgba(0,0,0,.06))' : 'transparent' }}><b>{o.label}</b>{o.sub ? <span className="muted" style={{ marginLeft: 8, fontSize: 12.5 }}>{o.sub}</span> : null}</li>) : <li className="muted" style={{ padding: '8px 10px' }}>{emptyText || 'No matches'}</li>}
+    </ul>}
+  </div>);
+}
 function Txt({ value, onChange, ...rest }) { return <input className="inp" type="text" value={value} onChange={(e) => onChange(e.target.value)} {...rest} />; }
 function DateIn({ value, onChange, max, ...rest }) { return <input className="inp" type="date" value={value} max={max} onChange={(e) => onChange(e.target.value)} {...rest} />; }
 function Area({ value, onChange, ...rest }) { return <textarea className="inp" value={value} onChange={(e) => onChange(e.target.value)} {...rest} />; }

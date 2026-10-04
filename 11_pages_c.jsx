@@ -10,11 +10,11 @@ function ExpenseTable({ rows, pageSize = 10, empty }) {
   const cols = [
     { key: 'expense_date', label: 'Date', render: (e) => fmtDate(e.expense_date) },
     { key: 'code', label: 'Expense', render: (e) => <span className="mono">{e.code}</span> },
-    { key: 'category', label: 'Category' },
+    { key: 'category', label: 'Category', render: (e) => catLabel(e) },
     { key: 'payee_name', label: 'Contractor / supplier', render: (e) => e.payee_name || '—' },
-    { key: 'description', label: 'Description', render: (e) => <div style={{ minWidth: 230 }}>{e.description}{e.kind === 'reversal' && <div className="muted" style={{ fontSize: 12 }}>Reason: {e.reversal_reason}</div>}</div> },
+    { key: 'description', label: 'Description', render: (e) => <div style={{ minWidth: 230 }}>{e.description || '—'}{e.kind === 'reversal' && <div className="muted" style={{ fontSize: 12 }}>Reason: {e.reversal_reason}</div>}</div> },
     { key: 'amount', label: 'Amount', align: 'r', render: (e) => M(e.amount) },
-    { key: 'method', label: 'Method', render: (e) => <div>{e.method}<div className="mono muted">{e.reference || ''}</div></div> },
+    { key: 'method', label: 'Method', render: (e) => <div>{methodLabel(e)}<div className="mono muted">{e.reference || ''}</div></div> },
     { key: 'approval_status', label: 'Approval', render: (e) => <div><Status v={e.status === 'Reversed' ? 'Reversed' : e.kind === 'reversal' ? 'Reversal' : e.approval_status} />{e.approved_by && <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>by {userName(db, e.approved_by)}</div>}</div> },
     { key: 'actions', label: 'Actions', align: 'r', render: (e) => { const bill = e.attachment_doc_id ? Calc.byId(db.documents, e.attachment_doc_id) : db.documents.filter((d) => d.related_type === 'expense' && d.related_id === e.id && live(d))[0]; return (<div className="act">
       {e.approval_status === 'Pending' && can(user, 'approve') && <><Btn size="sm" onClick={() => decide(e, 'Approved')}>Approve</Btn><Btn size="sm" variant="danger" onClick={() => decide(e, 'Rejected')}>Reject</Btn></>}

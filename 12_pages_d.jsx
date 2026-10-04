@@ -103,11 +103,11 @@ function SettingsPage() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14, alignItems: 'center' }}>{!admin && <span className="hint">Only an Admin can change these.</span>}<Btn variant="primary" busy={busy} disabled={!admin} onClick={saveIdentity}>Save identity</Btn></div>
       </Card>
-      <Card title="Share Configuration" sub="Total shares and the price per share. Every booking, dashboard figure and report reads these values.">
-        {priceNum <= 0 && <Note tone="warn">The share price has not been configured yet. Enter it below when it is finalised. Until then, share values show as not set and new bookings are blocked.</Note>}
+      <Card title="Share Configuration" sub="Total shares and the default (reference) price per share. A new booking is pre-filled with this price, but it can be changed per booking and is saved with that booking. Changing the default never alters existing bookings.">
+        {priceNum <= 0 && <Note tone="warn">The default share price has not been configured yet. Enter it below when it is finalised. Until then, bookings can still be created by typing a price on each booking.</Note>}
         <div className="frm" style={{ marginTop: priceNum <= 0 ? 10 : 0 }}>
           <Field label="Total shares in the project" req err={errs.total_shares} hint={sold + ' sold · ' + Math.max(0, totalNum - sold) + ' available'}><input className="inp" type="number" min="1" value={f.total_shares} onChange={(e) => set('total_shares')(e.target.value)} disabled={!admin} /></Field>
-          <Field label="Share price (per share)" req err={errs.default_share_price} hint={priceNum > 0 ? 'Total share value ' + fmtMoney(totalNum * priceNum) : 'Not configured (৳0)'}><Money value={f.default_share_price} onChange={set('default_share_price')} disabled={!admin} /></Field>
+          <Field label="Default share price (per share)" req err={errs.default_share_price} hint={priceNum > 0 ? 'Total share value ' + fmtMoney(totalNum * priceNum) : 'Not configured (৳0)'}><Money value={f.default_share_price} onChange={set('default_share_price')} disabled={!admin} /></Field>
           <Field label="Share name / type"><Txt value={f.share_name} onChange={set('share_name')} disabled={!admin} /></Field>
           <Field label="Remarks" full><Area rows={2} value={f.share_remarks} onChange={set('share_remarks')} disabled={!admin} /></Field>
         </div>

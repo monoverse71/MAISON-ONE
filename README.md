@@ -1,6 +1,6 @@
 # Apon Niketon Holdings — Shareholder & Construction Management
 
-Single-project web app (React 18, no backend). Data layer is an in-memory mock repository, ready to be swapped for Supabase (not connected). The app opens as a clean project: no sample records. Total shares 60, share price 0 (set in Settings > Share Configuration).
+Single-project web app (React 18, no backend). Data layer is an in-memory mock repository, ready to be swapped for Supabase (not connected). The app opens as a clean project: no sample records. Total shares 60. Settings holds only a default share price; each booking stores its own price.
 
 ## Build
     npm install

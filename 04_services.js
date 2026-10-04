@@ -64,7 +64,7 @@ function createServices(ctx) {
     const hasNom = !!(nominee.name && nominee.name.trim());
     if (!hasNom && hasNomFile(files)) throw new AppError('Enter the nominee name before adding nominee documents.', 'Check the form', 'VALIDATION');
     const db = getDb(), code = codeGen(db.shareholders, 'SH-', 4)(), id = uid('sh');
-    const row = Object.assign({ id: id, code: code, photo_url: null, photo_doc_id: null, nid_front_doc_id: null, nid_back_doc_id: null, created_by: getUser().id, created_at: nowIso() }, data, { nid: String(data.nid).replace(/\s/g, ''), phone: data.phone.trim() });
+    const row = Object.assign({ id: id, code: code, photo_url: null, photo_doc_id: null, nid_front_doc_id: null, nid_back_doc_id: null, created_by: getUser().id, created_at: nowIso() }, data, { nid: String(data.nid || '').replace(/\s/g, ''), phone: String(data.phone || '').trim(), registration_date: data.registration_date || TODAY });
     const nomRow = hasNom ? Object.assign({ id: uid('nom'), shareholder_id: id, photo_doc_id: null, nid_front_doc_id: null, nid_back_doc_id: null }, nominee) : null, docOps = [];
     for (const k of KYC_SLOTS) {
       if (files[k] && files[k] !== 'REMOVE') { const r = await slotOps(db, 'shareholder', row, k, files[k], id); Object.assign(row, r.patch); r.ops.forEach(function (o) { docOps.push(o); }); }
@@ -80,7 +80,7 @@ function createServices(ctx) {
     guard('write'); const db = getDb(), cur = Calc.byId(db.shareholders, id), data = input.data, nominee = input.nominee || {}, files = input.files || {}; need(V.shareholder(data, nominee));
     const nom = db.nominees.filter(function (n) { return n.shareholder_id === id && live(n); })[0] || null, hasNom = !!(nominee.name && nominee.name.trim());
     if (!hasNom && !nom && hasNomFile(files)) throw new AppError('Enter the nominee name before adding nominee documents.', 'Check the form', 'VALIDATION');
-    const patch = Object.assign({}, data, { nid: String(data.nid).replace(/\s/g, '') }), d = diff(cur, patch, SH_KEYS), ops = [], docOps = [], docNotes = [];
+    const patch = Object.assign({}, data, { nid: String(data.nid || '').replace(/\s/g, ''), phone: String(data.phone || '').trim(), registration_date: data.registration_date || cur.registration_date || TODAY }), d = diff(cur, patch, SH_KEYS), ops = [], docOps = [], docNotes = [];
     for (const k of KYC_SLOTS) { const v = files[k]; if (v) { const r = await slotOps(db, 'shareholder', cur, k, v, id); Object.assign(patch, r.patch); r.ops.forEach(function (o) { docOps.push(o); }); docNotes.push(KYC_LABEL[k] + (v === 'REMOVE' ? ' removed' : ' updated')); } }
     let nomChanged = false;
     if (hasNom || nom) {
@@ -124,15 +124,14 @@ function createServices(ctx) {
   };
   function sharePaymentRow(db, b, input, receipt, nextCode, extra) {
     return ins('share_payments', Object.assign({
-      id: uid('spay'), code: nextCode(), receipt_no: receipt, booking_id: b.id, shareholder_id: b.shareholder_id, amount: roundMoney(Number(input.amount)), payment_date: input.payment_date, method: input.method,
+      id: uid('spay'), code: nextCode(), receipt_no: receipt, booking_id: b.id, shareholder_id: b.shareholder_id, amount: roundMoney(Number(input.amount)), payment_date: input.payment_date, method: input.method || '', method_details: input.method === 'Others' ? String(input.method_details || '').trim() : '',
       reference: String(input.reference || '').trim(), note: input.note || '', attachment_doc_id: null, kind: 'payment', reversal_of: null, reversal_reason: null, reversed_by_id: null, status: 'Posted', created_by: getUser().id, created_at: nowIso(), client_request_id: null
     }, extra || {}));
   }
   S.createBooking = async function (input, requestId) {
     guard('write'); const db = getDb(), total = db.settings[0].total_shares, avail = total - Calc.sharesSold(db);
-    /* The price always comes from Settings. Anything typed by the caller is ignored. */
-    if (!(Number(db.settings[0].default_share_price) > 0)) throw new AppError('The share price has not been configured yet. Set it in Settings > Share Configuration before creating a booking.', 'Share price not set', 'PRICE_NOT_SET');
-    input = Object.assign({}, input, { unit_price: Number(db.settings[0].default_share_price) }); need(V.booking(input, { available: avail }));
+    /* The price on a booking is whatever was agreed for that booking (the Settings price is only the pre-filled default) and is stored with the booking, so later Settings changes never touch it. */
+    input = Object.assign({}, input, { booking_date: input.booking_date || TODAY }); need(V.booking(input, { available: avail }));
     const pay = input.payment && Number(input.payment.amount) > 0 ? input.payment : null, id = uid('bk'), grand = Number(input.quantity) * Number(input.unit_price) - Number(input.discount || 0);
     if (pay) { const pe = V.paymentCore(pay); need(pe); if (Number(pay.amount) > grand + 0.005) throw new AppError('The first payment exceeds the booking total. Lower it or increase the share quantity.', 'Payment too high', 'OVERPAY'); if (pay.payment_date < input.booking_date) throw new AppError('The payment date cannot be earlier than the booking date.', 'Check the dates', 'VALIDATION'); }
     const code = codeGen(db.share_bookings, 'BK-', 4)(), booking = ins('share_bookings', { id: id, code: code, shareholder_id: input.shareholder_id, quantity: Number(input.quantity), unit_price: Number(input.unit_price), discount: Number(input.discount || 0), booking_date: input.booking_date, reference_person: input.reference_person || '', remarks: input.remarks || '', status: 'Active', created_by: getUser().id, created_at: nowIso() });
@@ -207,7 +206,7 @@ function createServices(ctx) {
     need(V.paymentCore(input)); const chk = S.checkConstructionPayment(input), unit = Calc.byId(db.units, plan.unit_id);
     if (chk.overpay && !input.allowOverpay) throw new AppError('This payment is ' + fmtMoney(chk.overpay) + ' more than the remaining due of ' + fmtMoney(chk.due) + '.', 'Needs confirmation', 'NEEDS_CONFIRMATION');
     if (chk.duplicate && !input.allowDuplicate) throw new AppError('A payment with the same amount, date and reference already exists (' + chk.duplicate.receipt_no + ').', 'Possible duplicate', 'NEEDS_CONFIRMATION');
-    const p = ins('construction_payments', { id: uid('cpay'), code: codeGen(db.construction_payments, 'CN-', 4)(), receipt_no: receiptGen(db, 'RCT-C-')(), plan_id: plan.id, unit_id: plan.unit_id, shareholder_id: plan.shareholder_id, amount: roundMoney(Number(input.amount)), payment_date: input.payment_date, method: input.method, reference: String(input.reference || '').trim(), note: input.note || '', attachment_doc_id: null, kind: 'payment', reversal_of: null, reversal_reason: null, reversed_by_id: null, status: 'Posted', created_by: getUser().id, created_at: nowIso(), client_request_id: null });
+    const p = ins('construction_payments', { id: uid('cpay'), code: codeGen(db.construction_payments, 'CN-', 4)(), receipt_no: receiptGen(db, 'RCT-C-')(), plan_id: plan.id, unit_id: plan.unit_id, shareholder_id: plan.shareholder_id, amount: roundMoney(Number(input.amount)), payment_date: input.payment_date, method: input.method || '', method_details: input.method === 'Others' ? String(input.method_details || '').trim() : '', reference: String(input.reference || '').trim(), note: input.note || '', attachment_doc_id: null, kind: 'payment', reversal_of: null, reversal_reason: null, reversed_by_id: null, status: 'Posted', created_by: getUser().id, created_at: nowIso(), client_request_id: null });
     const ops = [];
     if (input.file) { const d = await storeFile(input.file, { doc_type: 'Payment Receipt', related_type: 'construction_payment', related_id: p.row.id, description: 'Receipt for ' + p.row.receipt_no }); p.row.attachment_doc_id = d.row.id; ops.push(d); }
     ops.unshift(p);
@@ -242,7 +241,7 @@ function createServices(ctx) {
     if (chk.overpay && !input.allowOverpay) throw new AppError('This payment is ' + fmtMoney(chk.overpay) + ' more than the remaining due on the contract installment.', 'Needs confirmation', 'NEEDS_CONFIRMATION');
     if (chk.duplicate && !input.allowDuplicate) throw new AppError('An expense with the same date, amount, payee and reference already exists (' + chk.duplicate.code + ').', 'Possible duplicate', 'NEEDS_CONFIRMATION');
     const u = getUser(), approval = can(u, 'approve') ? input.approval_status : 'Pending', c = input.contractor_id ? Calc.byId(db.contractors, input.contractor_id) : null;
-    const e = ins('project_expenses', { id: uid('exp'), code: codeGen(db.project_expenses, 'EX-', 4)(), expense_date: input.expense_date, category: input.category, contractor_id: input.contractor_id || null, payee_name: c ? c.name : String(input.payee_name || '').trim(), contract_installment_id: input.contract_installment_id || null, description: input.description.trim(), amount: roundMoney(Number(input.amount)), method: input.method, reference: String(input.reference || '').trim(), attachment_doc_id: null, approval_status: approval, approved_by: approval === 'Pending' ? null : u.id, paid_by: u.id, remarks: input.remarks || '', kind: 'expense', reversal_of: null, reversal_reason: null, reversed_by_id: null, status: 'Posted', created_by: u.id, created_at: nowIso(), client_request_id: null });
+    const e = ins('project_expenses', { id: uid('exp'), code: codeGen(db.project_expenses, 'EX-', 4)(), expense_date: input.expense_date, category: input.category, contractor_id: input.contractor_id || null, payee_name: c ? c.name : String(input.payee_name || '').trim(), contract_installment_id: input.contract_installment_id || null, description: String(input.description || '').trim() || (input.category === 'Other' ? String(input.other_description || '').trim() : ''), other_description: input.category === 'Other' ? String(input.other_description || '').trim() : '', amount: roundMoney(Number(input.amount)), method: input.method || '', method_details: input.method === 'Others' ? String(input.method_details || '').trim() : '', reference: String(input.reference || '').trim(), attachment_doc_id: null, approval_status: approval, approved_by: approval === 'Pending' ? null : u.id, paid_by: u.id, remarks: input.remarks || '', kind: 'expense', reversal_of: null, reversal_reason: null, reversed_by_id: null, status: 'Posted', created_by: u.id, created_at: nowIso(), client_request_id: null });
     const ops = [];
     if (input.file) { const d = await storeFile(input.file, { doc_type: 'Bill / Invoice', related_type: 'expense', related_id: e.row.id, description: 'Bill for ' + e.row.code }); e.row.attachment_doc_id = d.row.id; ops.push(d); }
     ops.unshift(e); ops.push(audit('Added project expense', 'expense', e.row.id, 'Added expense ' + e.row.code + ': ' + e.row.description + ' (' + fmtMoney(e.row.amount) + ', ' + approval + ')'));

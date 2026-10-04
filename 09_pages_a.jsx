@@ -7,7 +7,7 @@ function buildLedger(db, opts) {
   const add = (type, p) => {
     if (!live(p) || (opts.shareholderId && p.shareholder_id !== opts.shareholderId)) return;
     const b = type === 'share' ? Calc.byId(db.share_bookings, p.booking_id) : null, u = type === 'cons' ? Calc.byId(db.units, p.unit_id) : null;
-    out.push({ id: p.id, type: type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, who: shName(db, p.shareholder_id), target: type === 'share' ? (b ? b.code : '—') : (u ? u.code : '—'), amount: p.amount, method: p.method, reference: p.reference || '—', status: p.kind === 'reversal' ? 'Reversal' : p.status, canReverse: p.kind === 'payment' && p.status === 'Posted' });
+    out.push({ id: p.id, type: type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, who: shName(db, p.shareholder_id), target: type === 'share' ? (b ? b.code : '—') : (u ? u.code : '—'), amount: p.amount, method: methodLabel(p), reference: p.reference || '—', status: p.kind === 'reversal' ? 'Reversal' : p.status, canReverse: p.kind === 'payment' && p.status === 'Posted' });
   };
   db.share_payments.forEach((p) => add('share', p)); db.construction_payments.forEach((p) => add('cons', p));
   return out.sort((a, b) => b.date.localeCompare(a.date) || b.receipt.localeCompare(a.receipt));
@@ -50,15 +50,15 @@ function DashboardPage() {
   const scale = Math.max(d.shareCollected, d.consCollected, d.expense, d.shareDue + d.consDue, 1);
   return (<>
     <PageHead title="Dashboard" sub={'Money in and money out for ' + db.settings[0].project_name + '.'} actions={<><Btn icon="tag" onClick={() => go('sales', { newBooking: true })}>New share booking</Btn><Btn icon="receipt" onClick={() => go('expenses', { newExpense: true })}>Add project expense</Btn></>} />
-    {!d.priceSet && <Note tone="warn">The share price has not been configured yet. Share values show as ৳0 and new bookings are blocked until an Admin sets the price in <button type="button" className="link" onClick={() => go('settings')}>Settings &rarr; Share Configuration</button>.</Note>}
+    {!d.priceSet && <Note tone="warn">The default share price is not set (৳0), so the reference Total share value shows ৳0. Bookings can still be entered with their own price. An Admin can set the default in <button type="button" className="link" onClick={() => go('settings')}>Settings &rarr; Share Configuration</button>.</Note>}
     <div className="grid g-auto">
       <Stat label="Total shareholders" value={d.shareholders} sub={active + ' active'} />
       <Stat label="Total shares" value={d.totalShares} sub="Fixed project total" />
       <Stat label="Shares sold" value={d.sharesSold} sub={d.sharesSold ? 'of ' + d.totalShares : 'No bookings yet'} />
       <Stat label="Shares available" value={avail} sub="Total minus sold" />
-      <Stat label="Share price" value={fmtMoney(d.sharePrice)} sub={d.priceSet ? 'Per share, from Settings' : 'Not configured yet'} />
-      <Stat label="Total share value" value={fmtCompact(d.totalShareValue)} title={fmtMoney(d.totalShareValue)} sub={d.priceSet ? d.totalShares + ' shares x ' + fmtMoney(d.sharePrice) : 'Needs a share price'} />
-      <Stat label="Share collection" value={fmtCompact(d.shareCollected)} title={fmtMoney(d.shareCollected)} flow="in" sub={d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + '% of sold share value' : 'No payments yet'} />
+      <Stat label="Share price" value={fmtMoney(d.sharePrice)} sub={d.priceSet ? 'Default / reference price' : 'Default not configured'} />
+      <Stat label="Total share value" value={fmtCompact(d.totalShareValue)} title={fmtMoney(d.totalShareValue)} sub={d.priceSet ? d.totalShares + ' shares at the default price' : 'Needs a default price'} />
+      <Stat label="Share collection" value={fmtCompact(d.shareCollected)} title={fmtMoney(d.shareCollected)} flow="in" sub={d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + '% of sold value (saved prices)' : 'No payments yet'} />
       <Stat label="Share due" value={fmtCompact(d.shareDue)} title={fmtMoney(d.shareDue)} sub="Receivable from shareholders" />
       <Stat label="Construction contributions" value={fmtCompact(d.consCollected)} title={fmtMoney(d.consCollected)} flow="in" sub={d.consPlanned ? 'of ' + fmtCompact(d.consPlanned) + ' planned' : 'None set yet'} />
       <Stat label="Construction contribution due" value={fmtCompact(d.consDue)} title={fmtMoney(d.consDue)} sub="Receivable on plans" />
@@ -108,7 +108,7 @@ function DashboardPage() {
     </div>
     <Card title="Recent construction expenses" flush actions={<><Flow dir="out" /><Btn size="sm" variant="ghost" onClick={() => go('expenses')}>All expenses</Btn></>}>
       <DataTable pageSize={6} rows={d.recentExpenses} onRowClick={() => go('expenses')} empty={{ title: 'No expenses yet', icon: 'receipt' }}
-        cols={[{ key: 'code', label: 'Expense', render: (e) => <span className="mono">{e.code}</span> }, { key: 'expense_date', label: 'Date', render: (e) => fmtDate(e.expense_date) }, { key: 'category', label: 'Category' }, { key: 'description', label: 'Description', render: (e) => <div style={{ minWidth: 220 }}>{e.description}<div className="muted" style={{ fontSize: 12 }}>{e.payee_name || '—'}</div></div> }, { key: 'amount', label: 'Amount', align: 'r', render: (e) => M(e.amount) }, { key: 'approval_status', label: 'Approval', render: (e) => <Status v={e.approval_status} /> }]} />
+        cols={[{ key: 'code', label: 'Expense', render: (e) => <span className="mono">{e.code}</span> }, { key: 'expense_date', label: 'Date', render: (e) => fmtDate(e.expense_date) }, { key: 'category', label: 'Category', render: (e) => catLabel(e) }, { key: 'description', label: 'Description', render: (e) => <div style={{ minWidth: 220 }}>{e.description}<div className="muted" style={{ fontSize: 12 }}>{e.payee_name || '—'}</div></div> }, { key: 'amount', label: 'Amount', align: 'r', render: (e) => M(e.amount) }, { key: 'approval_status', label: 'Approval', render: (e) => <Status v={e.approval_status} /> }]} />
     </Card>
   </>);
 }
