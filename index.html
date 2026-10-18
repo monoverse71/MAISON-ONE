@@ -1023,7 +1023,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   const live = function(r) {
     return !r.archived_at;
   };
-  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles"], "Project Author": ["write", "reverse", "approve", "archive", "settings", "users"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
+  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles"], "Project Author": ["write", "reverse", "approve", "settings", "users"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
   const DB_ROLES = ["Super Admin", "Project Author"];
   function can(user, perm) {
     return !!user && (PERMS[user.role] || []).indexOf(perm) >= 0;
@@ -3844,7 +3844,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setTab(tab0 || "overview");
     }, [tab0, id]);
     const sh = Calc.byId(db.shareholders, id);
-    if (!sh || !live(sh)) return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "Shareholder not found", text: "This record may have been archived.", action: /* @__PURE__ */ React.createElement(Btn, { onClick: () => go("shareholders") }, "Back to shareholders") }));
+    if (!sh || !live(sh)) return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "Shareholder not found", text: can(user, "archiveShareholder") ? "This record may have been archived." : "This record is not available.", action: /* @__PURE__ */ React.createElement(Btn, { onClick: () => go("shareholders") }, "Back to shareholders") }));
     const c = Calc.shareholder(db, sh), w = can(user, "write");
     const nominee = db.nominees.filter((n) => n.shareholder_id === id && live(n))[0];
     const ledger = buildLedger(db, { shareholderId: id });
