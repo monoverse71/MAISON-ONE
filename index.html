@@ -656,6 +656,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   function createSeed() {
     const T = {
       users: [],
+      customers: [],
+      customer_nominees: [],
       shareholders: [],
       nominees: [],
       units: [],
@@ -731,7 +733,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     project_expenses: ["status", "reversed_by_id", "approval_status", "approved_by"],
     audit_logs: []
   };
-  const PK_TABLES = ["users", "shareholders", "nominees", "units", "share_bookings", "share_payments", "construction_plans", "construction_payments", "contractors", "contract_installments", "project_expenses", "documents", "audit_logs", "settings"];
+  const PK_TABLES = ["users", "shareholders", "nominees", "units", "share_bookings", "share_payments", "construction_plans", "construction_payments", "contractors", "contract_installments", "project_expenses", "documents", "audit_logs", "settings", "customers", "customer_nominees"];
   class MockRepository {
     constructor(seed) {
       this.kind = "Mock (in-memory)";
@@ -846,7 +848,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     if (!f) throw new RepoError("NO_CLIENT", "The Supabase client library is not loaded in this build.");
     return f(c.url, c.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
   }
-  const SB_TABLES = { users: "v_user_directory", shareholders: "shareholders", nominees: "nominees", units: "units", share_bookings: "share_bookings", share_payments: "share_payments", construction_plans: "construction_plans", construction_payments: "construction_payments", contractors: "contractors", contract_installments: "contract_installments", project_expenses: "project_expenses", documents: "documents", audit_logs: "v_audit_feed", settings: "project_settings" };
+  const SB_TABLES = { users: "v_user_directory", shareholders: "shareholders", nominees: "nominees", units: "units", share_bookings: "share_bookings", share_payments: "share_payments", construction_plans: "construction_plans", construction_payments: "construction_payments", contractors: "contractors", contract_installments: "contract_installments", project_expenses: "project_expenses", documents: "documents", audit_logs: "v_audit_feed", settings: "project_settings", customers: "customers", customer_nominees: "customer_nominees" };
   const SB_VIEW_FALLBACK = { v_user_directory: "profiles", v_audit_feed: "audit_logs" };
   const SB_ORDER = { v_user_directory: "created_at", v_audit_feed: "id", users: "created_at", audit_logs: "id", settings: "id", contract_installments: "id", units: "id" };
   const SB_PAGE = 1e3;
@@ -875,6 +877,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     },
     shareholders: (r) => Object.assign({}, r),
     nominees: (r) => Object.assign({}, r),
+    customers: (r) => Object.assign({}, r),
+    customer_nominees: (r) => Object.assign({}, r),
     share_bookings: (r) => numFields(Object.assign({}, r), ["quantity", "unit_price", "discount", "gross_total", "grand_total"]),
     share_payments: (r) => numFields(Object.assign({}, r), ["amount"]),
     construction_plans: (r) => numFields(Object.assign({}, r), ["total_amount"]),
@@ -1047,8 +1051,12 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     (db.shareholders || []).forEach(function(h) {
       if (h.archived_at) hidden[h.id] = 1;
     });
+    const hiddenC = {};
+    (db.customers || []).forEach(function(h) {
+      if (h.archived_at) hiddenC[h.id] = 1;
+    });
     return rows.filter(function(a) {
-      return a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]);
+      return a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]) && !(a.customer_id && hiddenC[a.customer_id]) && !(a.action === "Archived record" && (a.entity_type === "customer" || a.entity_type === "customer_nominee"));
     }).map(function(a) {
       const acct = a.entity_type === "user";
       const action = !acct ? a.action : a.action === "Created first Super Admin" || a.action === "Invited user" ? "Created account" : a.action === "Changed user role" ? "Edited user" : a.action;
@@ -1096,6 +1104,32 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const status = p.status === "Cancelled" ? "Cancelled" : total > 0 && due < -4e-3 ? "Overpaid" : total > 0 && due <= 4e-3 ? "Completed" : paid > 4e-3 ? "In Progress" : "Not Started";
       const exact = total ? Math.round(paid / total * 1e3) / 10 : 0;
       return { payments: pays, count: dates.length, last: dates.length ? dates[dates.length - 1] : "", total, paid, due, status, pct: Math.max(0, Math.min(100, exact)), pctExact: exact };
+    },
+    /* A construction plan or payment belongs to a shareholder (unit-based) OR a direct customer. */
+    buyer: function(db, row) {
+      if (!row) return null;
+      if (row.customer_id) {
+        const c = Calc.byId(db.customers || [], row.customer_id);
+        return c ? { kind: "customer", id: c.id, name: c.full_name, code: c.code } : { kind: "customer", id: row.customer_id, name: "—", code: "" };
+      }
+      const s = row.shareholder_id ? Calc.byId(db.shareholders, row.shareholder_id) : null;
+      return s ? { kind: "shareholder", id: s.id, name: s.full_name, code: s.code } : { kind: "shareholder", id: row.shareholder_id, name: "—", code: "" };
+    },
+    customer: function(db, c) {
+      const plans = (db.construction_plans || []).filter(function(p) {
+        return p.customer_id === c.id && live(p) && p.status !== "Cancelled";
+      }).map(function(p) {
+        return { p, s: Calc.plan(db, p) };
+      });
+      const total = sum(plans, function(x) {
+        return x.s.total;
+      }), paid = sum(plans, function(x) {
+        return x.s.paid;
+      });
+      const nominee = (db.customer_nominees || []).filter(function(n) {
+        return n.customer_id === c.id && live(n);
+      })[0] || null;
+      return { plans, total, paid, due: roundMoney(total - paid), nominee };
     },
     shareholder: function(db, sh) {
       const bookings = db.share_bookings.filter(function(b) {
@@ -1240,6 +1274,10 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         const s = Calc.byId(db.shareholders, id);
         return s ? s.full_name : "—";
       };
+      const custName = function(id) {
+        const s = Calc.byId(db.customers || [], id);
+        return s ? s.full_name : "—";
+      };
       const unitCode = function(id) {
         const u = Calc.byId(db.units, id);
         return u ? u.code : "—";
@@ -1247,7 +1285,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const recentPayments = db.share_payments.filter(live).map(function(p) {
         return { id: p.id, type: "Land Share", receipt: p.receipt_no, date: p.payment_date, who: shName2(p.shareholder_id), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
       }).concat(db.construction_payments.filter(live).map(function(p) {
-        return { id: p.id, type: "Construction", receipt: p.receipt_no, date: p.payment_date, who: shName2(p.shareholder_id) + " · " + unitCode(p.unit_id), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
+        return { id: p.id, type: "Construction", receipt: p.receipt_no, date: p.payment_date, who: (p.customer_id ? custName(p.customer_id) : shName2(p.shareholder_id)) + " · " + (p.unit_id ? unitCode(p.unit_id) : "No unit yet"), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
       })).sort(function(a, b) {
         return b.date.localeCompare(a.date) || b.receipt.localeCompare(a.receipt);
       });
@@ -1257,7 +1295,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }).sort(function(a, b) {
         return b.s.due - a.s.due;
       }).slice(0, 6).map(function(x) {
-        return { id: x.p.id, plan_id: x.p.id, who: shName2(x.p.shareholder_id), unit: unitCode(x.p.unit_id), total: x.s.total, paid: x.s.paid, due: x.s.due, pct: x.s.pct, status: x.s.status };
+        return { id: x.p.id, plan_id: x.p.id, who: x.p.customer_id ? custName(x.p.customer_id) : shName2(x.p.shareholder_id), unit: x.p.unit_id ? unitCode(x.p.unit_id) : "No unit yet", total: x.s.total, paid: x.s.paid, due: x.s.due, pct: x.s.pct, status: x.s.status };
       });
       db.contractors.filter(function(c) {
         return live(c) && c.contract_value;
@@ -1369,6 +1407,22 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (String(f.nid || "").trim() && !V.nid(f.nid)) e.nid = "NID must be 10, 13 or 17 digits.";
       if (n && n.phone && !V.phone(n.phone)) e.nominee_phone = "Use a Bangladesh mobile number.";
       if (n && n.nid && !V.nid(n.nid)) e.nominee_nid = "NID must be 10, 13 or 17 digits.";
+      return e;
+    },
+    customer: function(f, n) {
+      const e = {};
+      if (!String(f.full_name || "").trim()) e.full_name = "Enter the full name.";
+      if (String(f.phone || "").trim() && !V.phone(f.phone)) e.phone = "Use a Bangladesh mobile number, e.g. 01711-000000.";
+      if (!V.email(f.email)) e.email = "Enter a valid email address.";
+      if (String(f.nid || "").trim() && !V.nid(f.nid)) e.nid = "NID must be 10, 13 or 17 digits.";
+      if (n && n.phone && !V.phone(n.phone)) e.nominee_phone = "Use a Bangladesh mobile number.";
+      if (n && n.nid && !V.nid(n.nid)) e.nominee_nid = "NID must be 10, 13 or 17 digits.";
+      return e;
+    },
+    customerPlan: function(f) {
+      const e = {};
+      if (!f.customer_id) e.customer_id = "Choose the customer.";
+      if (!f.total_amount || isNaN(Number(f.total_amount)) || Number(f.total_amount) <= 0) e.total_amount = "Enter the total construction contribution.";
       return e;
     },
     paymentCore: function(f) {
@@ -1577,6 +1631,24 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }).filter(function(s) {
         return digits(s.phone) && digits(s.phone) === digits(data.phone) || s.nid && s.nid === String(data.nid || "").replace(/\s/g, "") || s.full_name.trim().toLowerCase() === String(data.full_name || "").trim().toLowerCase();
       });
+    };
+    S.findDuplicateCustomers = function(data, excludeId) {
+      const db = getDb(), ph = digits(data.phone), em = String(data.email || "").trim().toLowerCase(), nid = String(data.nid || "").replace(/\s/g, ""), nm = String(data.full_name || "").trim().toLowerCase(), out = [];
+      const chk = function(r, kind) {
+        const why = [];
+        if (ph && digits(r.phone) === ph) why.push("phone");
+        if (em && String(r.email || "").trim().toLowerCase() === em) why.push("email");
+        if (nid && String(r.nid || "").replace(/\s/g, "") === nid) why.push("NID");
+        if (nm && String(r.full_name || "").trim().toLowerCase() === nm) why.push("name");
+        if (why.length) out.push({ row: r, kind, why });
+      };
+      (db.customers || []).forEach(function(c) {
+        if (live(c) && c.id !== excludeId) chk(c, "customer");
+      });
+      db.shareholders.forEach(function(s) {
+        if (live(s)) chk(s, "shareholder");
+      });
+      return out;
     };
     const hasNomFile = function(files) {
       return KYC_SLOTS.some(function(k) {
@@ -2384,13 +2456,97 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (Object.keys(set).length) await rpc("update_settings", { p_data: set });
       await done();
     };
-    const RESTORE_ENTITY = { shareholders: "shareholder", nominees: "nominee", share_bookings: "booking", construction_plans: "plan", contractors: "contractor", documents: "document" };
+    const CU_KEYS = ["full_name", "phone", "email", "profession", "designation", "nid", "address", "registration_date", "status", "remarks"], NOM_KEYS = ["name", "relation", "phone", "nid", "address"];
+    S.createCustomer = async function(input, requestId) {
+      guard("write");
+      const data = input.data, nominee = input.nominee || {};
+      need(V.customer(data, nominee));
+      const hasNom = !!(nominee.name && nominee.name.trim());
+      if (!hasNom && NOM_KEYS.some((k) => String(nominee[k] || "").trim())) throw new AppError("Enter the nominee name, or clear the other nominee fields.", "Check the form", "VALIDATION");
+      const id = await rpc("create_customer", { p_request_id: reqId(requestId), p_data: shJson(data), p_nominee: hasNom ? personJson(nominee) : null });
+      await done();
+      return find("customers", id);
+    };
+    S.updateCustomer = async function(id, input, requestId) {
+      guard("write");
+      const db = getDb(), cur = Calc.byId(db.customers, id), data = input.data, nominee = input.nominee || {};
+      need(V.customer(data, nominee));
+      if (!cur) throw new AppError("Record not found.", "Not found");
+      const nom = (db.customer_nominees || []).filter((n) => n.customer_id === id && live(n))[0] || null, hasNom = !!(nominee.name && nominee.name.trim());
+      if (nom && !hasNom) throw new AppError("The nominee name cannot be blank. Edit it instead.", "Check the form", "VALIDATION");
+      if (!hasNom && NOM_KEYS.some((k) => String(nominee[k] || "").trim())) throw new AppError("Enter the nominee name, or clear the other nominee fields.", "Check the form", "VALIDATION");
+      const patch = shJson(data, cur), d = diff(cur, patch, CU_KEYS), np = hasNom ? personJson(nominee) : null, nomChanged = !!np && (!nom || diff(nom, np, NOM_KEYS).changed.length > 0);
+      if (!d.changed.length && !nomChanged) throw new AppError("Nothing was changed.", "No changes", "NO_CHANGE");
+      await rpc("update_customer", { p_id: id, p_data: patch, p_nominee: nomChanged ? np : null });
+      await done();
+      return true;
+    };
+    S.archiveCustomer = async function(id, reason) {
+      guard("archive");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason.", "Reason needed", "VALIDATION");
+      const db = getDb(), c = Calc.byId(db.customers, id), cs = c ? Calc.customer(db, c) : null;
+      if (cs && cs.plans.length) throw new AppError("This customer still has construction plans. Cancel or archive those first.", "Cannot archive yet", "HAS_LINKS");
+      await rpc("archive_customer", { p_id: id, p_reason: reason.trim() });
+      await done();
+    };
+    S.archiveCustomerNominee = async function(id, reason) {
+      guard("archive");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason.", "Reason needed", "VALIDATION");
+      await rpc("archive_customer_nominee", { p_id: id, p_reason: reason.trim() });
+      await done();
+    };
+    S.createCustomerPlan = async function(f, requestId) {
+      guard("write");
+      need(V.customerPlan(f));
+      const c = Calc.byId(getDb().customers, f.customer_id);
+      if (!c || c.archived_at) throw new AppError("Choose an active customer.", "Check the form", "VALIDATION");
+      const id = await rpc("create_customer_plan", { p_request_id: reqId(requestId), p_customer_id: f.customer_id, p_data: { total_amount: Number(f.total_amount), remarks: f.remarks || "" } });
+      await done();
+      return id;
+    };
+    const shUpdatePlanTotal = S.updatePlanTotal, shAddCons = S.addConstructionPayment, shReverseCons = S.reverseConstructionPayment;
+    S.updatePlanTotal = async function(planId, total, reason) {
+      const plan = Calc.byId(getDb().construction_plans, planId);
+      if (!plan || !plan.customer_id) return shUpdatePlanTotal(planId, total, reason);
+      guard("approve");
+      const pc = Calc.plan(getDb(), plan);
+      need(V.planTotal(total, pc.paid, reason));
+      if (Number(total) === plan.total_amount) throw new AppError("The total is already " + fmtMoney(plan.total_amount) + ".", "No changes", "NO_CHANGE");
+      await rpc("update_customer_plan_total", { p_id: planId, p_total: Number(total), p_reason: reason });
+      await done();
+    };
+    S.addConstructionPayment = async function(input, requestId) {
+      const plan = Calc.byId(getDb().construction_plans, input.plan_id);
+      if (!plan || !plan.customer_id) return shAddCons(input, requestId);
+      guard("write");
+      need(V.paymentCore(input));
+      const chk = S.checkConstructionPayment(input);
+      if (chk.overpay && !input.allowOverpay) throw new AppError("This payment is " + fmtMoney(chk.overpay) + " more than the remaining due of " + fmtMoney(chk.due) + ".", "Needs confirmation", "NEEDS_CONFIRMATION");
+      if (chk.duplicate && !input.allowDuplicate) throw new AppError("A payment with the same amount, date and reference already exists (" + chk.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
+      const file = input.file ? await upload(input.file, "finance", false) : null;
+      const id = await rpc("add_customer_plan_payment", { p_request_id: reqId(requestId), p_plan_id: plan.id, p_data: payJson(input), p_file: file, p_allow_overpay: !!input.allowOverpay, p_allow_duplicate: !!input.allowDuplicate, p_correction_of: input.correction_of || null });
+      await done();
+      return find("construction_payments", id);
+    };
+    S.reverseConstructionPayment = async function(id, reason) {
+      const p = Calc.byId(getDb().construction_payments, id);
+      if (!p || !p.customer_id) return shReverseCons(id, reason);
+      guard("reverse");
+      if (p.kind !== "payment" || p.status !== "Posted") throw new AppError("Only posted payments can be reversed.", "Cannot reverse");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for the reversal.", "Reason needed");
+      const rev = await rpc("reverse_customer_plan_payment", { p_id: id, p_reason: reason });
+      await done();
+      return find("construction_payments", rev);
+    };
+    const RESTORE_ENTITY = { shareholders: "shareholder", nominees: "nominee", share_bookings: "booking", construction_plans: "plan", contractors: "contractor", documents: "document", customers: "customer", customer_nominees: "customer_nominee" };
     S.restoreRecord = async function(table, id, reason) {
       guard("restore");
       const entity = RESTORE_ENTITY[table];
       if (!entity) throw new AppError("This kind of record cannot be restored.", "Cannot restore", "VALIDATION");
       if (!String(reason || "").trim()) throw new AppError("Give a reason for restoring.", "Reason needed", "VALIDATION");
-      await rpc("restore_record", { p_entity: entity, p_id: id, p_reason: reason.trim() });
+      if (table === "customers") await rpc("restore_customer", { p_id: id, p_reason: reason.trim() });
+      else if (table === "customer_nominees") await rpc("restore_customer_nominee", { p_id: id, p_reason: reason.trim() });
+      else await rpc("restore_record", { p_entity: entity, p_id: id, p_reason: reason.trim() });
       await done();
     };
     S.canRestoreTable = (table) => !!RESTORE_ENTITY[table];
@@ -2482,8 +2638,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return db.construction_plans.filter(function(p) {
           return live(p) && p.status !== "Cancelled";
         }).map(function(p) {
-          const c = Calc.plan(db, p), u = Calc.byId(db.units, p.unit_id), sh = Calc.byId(db.shareholders, p.shareholder_id);
-          return { code: p.code, date: p.created_at.slice(0, 10), unit: u.code, name: sh.full_name, total: c.total, paid: c.paid, due: c.due, pct: fmtPct(c.pctExact), count: c.count, last: c.last, status: c.status };
+          const c = Calc.plan(db, p), u = Calc.byId(db.units, p.unit_id), bu = Calc.buyer(db, p);
+          return { code: p.code, date: p.created_at.slice(0, 10), unit: u ? u.code : "No unit yet", name: bu.name, total: c.total, paid: c.paid, due: c.due, pct: fmtPct(c.pctExact), count: c.count, last: c.last, status: c.status };
         });
       }
     },
@@ -2497,8 +2653,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       cols: [{ k: "receipt", l: "Receipt" }, { k: "date", l: "Date", t: "date" }, { k: "name", l: "Shareholder" }, { k: "unit", l: "Unit" }, { k: "amount", l: "Amount", t: "money", total: true }, { k: "method", l: "Method" }, { k: "ref", l: "Reference" }, { k: "type", l: "Entry" }, { k: "status", l: "Status", t: "badge" }],
       build: function(db) {
         return db.construction_payments.filter(live).map(function(p) {
-          const sh = Calc.byId(db.shareholders, p.shareholder_id), u = Calc.byId(db.units, p.unit_id);
-          return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, unit: u.code, amount: p.amount, method: methodLabel(p), ref: p.reference || "—", type: p.kind === "reversal" ? "Reversal" : "Payment", status: p.status };
+          const bu = Calc.buyer(db, p), u = Calc.byId(db.units, p.unit_id);
+          return { receipt: p.receipt_no, date: p.payment_date, name: bu.name, unit: u ? u.code : "No unit yet", amount: p.amount, method: methodLabel(p), ref: p.reference || "—", type: p.kind === "reversal" ? "Reversal" : "Payment", status: p.status };
         }).sort(byDateDesc("date"));
       }
     },
@@ -2514,8 +2670,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return db.construction_plans.filter(function(p) {
           return live(p) && p.status !== "Cancelled";
         }).map(function(p) {
-          const c = Calc.plan(db, p), u = Calc.byId(db.units, p.unit_id), sh = Calc.byId(db.shareholders, p.shareholder_id);
-          return { unit: u.code, name: sh.full_name, phone: sh.phone, date: p.created_at.slice(0, 10), total: c.total, paid: c.paid, due: c.due, pct: fmtPct(c.pctExact), last: c.last, status: c.status };
+          const c = Calc.plan(db, p), u = Calc.byId(db.units, p.unit_id), sh = p.customer_id ? Calc.byId(db.customers || [], p.customer_id) : Calc.byId(db.shareholders, p.shareholder_id), bu = Calc.buyer(db, p);
+          return { unit: u ? u.code : "No unit yet", name: bu.name, phone: sh ? sh.phone : "", date: p.created_at.slice(0, 10), total: c.total, paid: c.paid, due: c.due, pct: fmtPct(c.pctExact), last: c.last, status: c.status };
         }).filter(function(r) {
           return r.due > 4e-3;
         }).sort(function(a, b) {
@@ -3016,6 +3172,23 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const s = Calc.byId(db.shareholders, id);
     return s ? s.full_name : "—";
   }
+  function buyerName(db, row) {
+    const b = Calc.buyer(db, row);
+    return b ? b.name : "—";
+  }
+  function planUnitLabel(db, p) {
+    const u = p && p.unit_id ? Calc.byId(db.units, p.unit_id) : null;
+    return u ? u.code : "—";
+  }
+  function BuyerLink({ row, children }) {
+    const { db, go } = useApp();
+    const b = Calc.buyer(db, row);
+    if (!b || b.name === "—") return /* @__PURE__ */ React.createElement("span", null, "—");
+    return /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: (e) => {
+      e.stopPropagation();
+      go(b.kind === "customer" ? "customer" : "profile", { id: b.id });
+    } }, children || b.name);
+  }
   function userName(db, id) {
     const u = Calc.byId(db.users, id);
     return u ? u.name : "—";
@@ -3379,14 +3552,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const [errs, setErrs] = useState({});
     const [busy, setBusy] = useState(false);
     const [warn, setWarn] = useState(null);
-    const plans = db.construction_plans.filter((p) => live(p) && p.status !== "Cancelled").map((p) => ({ p, s: Calc.plan(db, p), u: Calc.byId(db.units, p.unit_id) }));
+    const plans = db.construction_plans.filter((p) => live(p) && p.status !== "Cancelled").map((p) => ({ p, s: Calc.plan(db, p), u: Calc.byId(db.units, p.unit_id) || { code: "No unit yet" } }));
     const cur = plans.filter((x) => x.p.id === pid)[0];
     useEffect(() => {
       setWarn(null);
     }, [f.amount, f.payment_date, f.reference, pid]);
     const submit = async () => {
       const e = {};
-      if (!pid) e.plan = "Select a unit.";
+      if (!pid) e.plan = "Select a plan.";
       Object.assign(e, V.paymentCore(f));
       setErrs(e);
       if (V.hasErrors(e)) return;
@@ -3400,16 +3573,16 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setBusy(false);
       if (r.ok) {
         onClose();
-        open("receipt", { kind: "cons", id: r.r.id });
+        if (r.r) open("receipt", { kind: "cons", id: r.r.id });
       }
     };
     const after = cur && Number(f.amount) > 0 ? roundMoney(cur.s.due - Number(f.amount)) : null;
-    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected construction payment" : "Add construction payment", sub: "Any amount, any date. Land share payments are recorded separately.", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit and shareholder", req: true, err: errs.plan }, /* @__PURE__ */ React.createElement(SearchPick, { value: pid, onChange: (v) => {
+    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected construction payment" : "Add construction payment", sub: "Any amount, any date. Land share payments are recorded separately.", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit or customer plan", req: true, err: errs.plan }, /* @__PURE__ */ React.createElement(SearchPick, { value: pid, onChange: (v) => {
       setPid(v);
       setF((p) => Object.assign({}, p, { amount: "" }));
     }, options: plans.map((x) => {
-      const s0 = Calc.byId(db.shareholders, x.p.shareholder_id) || {};
-      return { value: x.p.id, label: "Unit " + x.u.code, sub: (s0.full_name || "") + (s0.code ? " · " + s0.code : "") + (s0.phone ? " · " + s0.phone : ""), search: x.u.code + " " + (s0.full_name || "") + " " + (s0.code || "") + " " + (s0.phone || "") };
+      const s0 = (x.p.customer_id ? Calc.byId(db.customers, x.p.customer_id) : Calc.byId(db.shareholders, x.p.shareholder_id)) || {};
+      return { value: x.p.id, label: x.p.unit_id ? "Unit " + x.u.code : "Customer plan " + x.p.code, sub: (s0.full_name || "") + (s0.code ? " · " + s0.code : "") + (s0.phone ? " · " + s0.phone : ""), search: x.u.code + " " + (s0.full_name || "") + " " + (s0.code || "") + " " + (s0.phone || "") };
     }), placeholder: "Search unit, name, ID or phone", disabled: !!planId })), cur && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.total))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid so far"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.due))), after !== null && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Due after this payment"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(Math.max(0, after))))), /* @__PURE__ */ React.createElement(PaymentFields, { f, set, errs, dueHint: cur && cur.s.due > 0 ? /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => setF((p) => Object.assign({}, p, { amount: String(cur.s.due) })) }, "Pay full due (", fmtMoney(cur.s.due), ")") : "Enter the amount the client is paying now." })), /* @__PURE__ */ React.createElement(PayWarn, { chk: warn }));
   }
   function ScheduleEditor({ rows, setRows, total, paidById, err }) {
@@ -3629,10 +3802,10 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const { db, open } = useApp();
     const p = Calc.byId(kind === "share" ? db.share_payments : db.construction_payments, id);
     if (!p) return null;
-    const b = kind === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = kind === "cons" ? Calc.byId(db.units, p.unit_id) : null, att = p.attachment_doc_id ? Calc.byId(db.documents, p.attachment_doc_id) : null;
+    const b = kind === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = kind === "cons" ? Calc.byId(db.units, p.unit_id) : null, cplan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, att = p.attachment_doc_id ? Calc.byId(db.documents, p.attachment_doc_id) : null;
     const plan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, pc = plan ? Calc.plan(db, plan) : null, bs = b ? Calc.bookingSummary(db, b) : null;
     const tot = pc ? pc.total : bs ? bs.grand : 0, paid = pc ? pc.paid : bs ? bs.paid : 0, due = pc ? pc.due : bs ? bs.due : 0;
-    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, shName(db, p.shareholder_id))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : "Unit"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u.code)), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : "")));
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? shName(db, p.shareholder_id) : buyerName(db, p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : u ? "Unit" : "Plan"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u ? u.code : cplan ? cplan.code : "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : "")));
   }
   function ReverseDialog({ kind, id, onClose }) {
     const { db, S, run, open } = useApp();
@@ -3664,6 +3837,58 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setErr("");
     }, placeholder: "For example: wrong amount entered" })), /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "rev-again", checked: again, onChange: (e) => setAgain(e.target.checked) }), "Record a corrected entry next"));
   }
+  function CustomerForm({ customer, onClose, onSaved }) {
+    const { db, S, run } = useApp();
+    const reqId = useRequestId();
+    const nom0 = customer ? (db.customer_nominees || []).filter((n2) => n2.customer_id === customer.id && live(n2))[0] : null;
+    const g = (k, d) => customer && customer[k] != null ? customer[k] : d;
+    const [f, set] = useForm({ full_name: g("full_name", ""), phone: g("phone", ""), email: g("email", ""), profession: g("profession", ""), designation: g("designation", ""), nid: g("nid", ""), address: g("address", ""), registration_date: g("registration_date", TODAY), status: g("status", "Active"), remarks: g("remarks", "") });
+    const [n, setN] = useForm({ name: nom0 ? nom0.name : "", relation: nom0 ? nom0.relation || "" : "", phone: nom0 ? nom0.phone || "" : "", nid: nom0 ? nom0.nid || "" : "", address: nom0 ? nom0.address || "" : "" });
+    const [errs, setErrs] = useState({});
+    const [busy, setBusy] = useState(false);
+    const [dups, setDups] = useState(null);
+    const submit = async () => {
+      const e = V.customer(f, n);
+      if (!n.name.trim() && !nom0 && (n.relation || n.phone || n.nid || n.address)) e.nominee_name = "Enter the nominee name, or clear the other nominee fields.";
+      if (nom0 && !n.name.trim()) e.nominee_name = "The nominee name cannot be blank.";
+      setErrs(e);
+      if (V.hasErrors(e)) return;
+      const found = S.findDuplicateCustomers(f, customer && customer.id);
+      if (found.length && !dups) {
+        setDups(found);
+        return;
+      }
+      setBusy(true);
+      const r = await run(() => customer ? S.updateCustomer(customer.id, { data: f, nominee: n }, reqId) : S.createCustomer({ data: f, nominee: n }, reqId), customer ? "Customer updated" : "Customer added");
+      setBusy(false);
+      if (r.ok) {
+        onClose();
+        onSaved && onSaved(r.r);
+      }
+    };
+    return /* @__PURE__ */ React.createElement(Modal, { title: customer ? "Edit customer" : "Add customer", sub: customer ? customer.code : "Only the full name is required. Everything else can be added later.", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: dups ? "Save anyway" : customer ? "Save changes" : "Add customer" }) }, dups && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Check before saving."), " Matching record", dups.length > 1 ? "s" : "", ": ", dups.map((d) => (d.row.code || "") + " " + d.row.full_name + " (same " + d.why.join(", ") + ")").join("; "), ". Family members can share a phone or email, so you can still save."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Customer details"), /* @__PURE__ */ React.createElement(Field, { label: "Full name", req: true, err: errs.full_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.full_name, onChange: set("full_name"), autoComplete: "off" })), /* @__PURE__ */ React.createElement(Field, { label: "Phone number", err: errs.phone }, /* @__PURE__ */ React.createElement(Txt, { value: f.phone, onChange: set("phone"), placeholder: "01711-000000", inputMode: "tel" })), /* @__PURE__ */ React.createElement(Field, { label: "Email", err: errs.email }, /* @__PURE__ */ React.createElement(Txt, { value: f.email, onChange: set("email"), type: "email" })), /* @__PURE__ */ React.createElement(Field, { label: "NID number", err: errs.nid, hint: "Optional. 10, 13 or 17 digits." }, /* @__PURE__ */ React.createElement(Txt, { value: f.nid, onChange: set("nid"), inputMode: "numeric" })), /* @__PURE__ */ React.createElement(Field, { label: "Profession" }, /* @__PURE__ */ React.createElement(Txt, { value: f.profession, onChange: set("profession") })), /* @__PURE__ */ React.createElement(Field, { label: "Designation" }, /* @__PURE__ */ React.createElement(Txt, { value: f.designation, onChange: set("designation") })), /* @__PURE__ */ React.createElement(Field, { label: "Address", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.address, onChange: set("address") })), /* @__PURE__ */ React.createElement(Field, { label: "Registration date" }, /* @__PURE__ */ React.createElement(DateIn, { value: f.registration_date, onChange: set("registration_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Status" }, /* @__PURE__ */ React.createElement(Sel, { value: f.status, onChange: set("status"), options: ["Active", "Inactive"] })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.remarks, onChange: set("remarks") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Nominee"), /* @__PURE__ */ React.createElement(Field, { label: "Nominee name", err: errs.nominee_name }, /* @__PURE__ */ React.createElement(Txt, { value: n.name, onChange: setN("name") })), /* @__PURE__ */ React.createElement(Field, { label: "Relation" }, /* @__PURE__ */ React.createElement(Txt, { value: n.relation, onChange: setN("relation"), placeholder: "Spouse, son, brother…" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee phone", err: errs.nominee_phone }, /* @__PURE__ */ React.createElement(Txt, { value: n.phone, onChange: setN("phone"), inputMode: "tel" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee NID", err: errs.nominee_nid }, /* @__PURE__ */ React.createElement(Txt, { value: n.nid, onChange: setN("nid"), inputMode: "numeric" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee address", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: n.address, onChange: setN("address") }))));
+  }
+  function CustomerPlanForm({ customerId, onClose, onSaved }) {
+    const { db, S, run } = useApp();
+    const reqId = useRequestId();
+    const custs = (db.customers || []).filter((c) => live(c) && c.status === "Active" || c.id === customerId);
+    const [f, set] = useForm({ customer_id: customerId || "", total_amount: "", remarks: "" });
+    const [errs, setErrs] = useState({});
+    const [busy, setBusy] = useState(false);
+    const submit = async () => {
+      const e = V.customerPlan(f);
+      setErrs(e);
+      if (V.hasErrors(e)) return;
+      setBusy(true);
+      const r = await run(() => S.createCustomerPlan(f, reqId), "Construction plan created");
+      setBusy(false);
+      if (r.ok) {
+        onClose();
+        onSaved && onSaved(r.r);
+      }
+    };
+    return /* @__PURE__ */ React.createElement(Modal, { title: "New customer construction plan", sub: "A total for the customer. No unit is needed now; a unit can be linked later.", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Create plan" }) }, /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Customer", req: true, err: errs.customer_id }, /* @__PURE__ */ React.createElement(SearchPick, { value: f.customer_id, onChange: set("customer_id"), disabled: !!customerId, options: custs.map((c) => ({ value: c.id, label: c.full_name, sub: (c.code || "") + (c.phone ? " · " + c.phone : ""), search: c.full_name + " " + (c.code || "") + " " + (c.phone || "") })), placeholder: "Search customer" })), /* @__PURE__ */ React.createElement(Field, { label: "Total construction contribution", req: true, err: errs.total_amount, hint: "The customer can then pay any amount, any time." }, /* @__PURE__ */ React.createElement(Money, { value: f.total_amount, onChange: set("total_amount"), placeholder: "2000000" })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.remarks, onChange: set("remarks") }))));
+  }
   async function copyText(text, el) {
     try {
       await navigator.clipboard.writeText(text);
@@ -3686,14 +3911,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     };
     return /* @__PURE__ */ React.createElement(Modal, { title: "Export · " + out.filename, sub: rows.length + " rows", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Close"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "copy", onClick: copy }, "Copy contents")) }, /* @__PURE__ */ React.createElement(Note, null, out.note, " Downloads are not available in this preview, so copy the contents instead."), /* @__PURE__ */ React.createElement("textarea", { ref: ta, className: "inp mono", readOnly: true, rows: 14, value: out.body, "aria-label": "Export contents", style: { whiteSpace: "pre", overflow: "auto" } }));
   }
-  const MODAL_REGISTRY = { shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
+  const MODAL_REGISTRY = { shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
     const out = [];
     const add = (type, p) => {
-      if (!live(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId) return;
+      if (!live(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
       const b = type === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = type === "cons" ? Calc.byId(db.units, p.unit_id) : null;
-      out.push({ id: p.id, type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, who: shName(db, p.shareholder_id), target: type === "share" ? b ? b.code : "—" : u ? u.code : "—", amount: p.amount, method: methodLabel(p), reference: p.reference || "—", status: p.kind === "reversal" ? "Reversal" : p.status, canReverse: p.kind === "payment" && p.status === "Posted" });
+      out.push({ id: p.id, type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, customer_id: p.customer_id || null, who: type === "cons" ? buyerName(db, p) : shName(db, p.shareholder_id), target: type === "share" ? b ? b.code : "—" : u ? u.code : p.customer_id ? (Calc.byId(db.construction_plans, p.plan_id) || {}).code || "—" : "—", amount: p.amount, method: methodLabel(p), reference: p.reference || "—", status: p.kind === "reversal" ? "Reversal" : p.status, canReverse: p.kind === "payment" && p.status === "Posted" });
     };
     db.share_payments.forEach((p) => add("share", p));
     db.construction_payments.forEach((p) => add("cons", p));
@@ -3708,7 +3933,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       { key: "receipt", label: "Receipt", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt) },
       { key: "date", label: "Date", render: (r) => fmtDate(r.date) },
       { key: "type", label: "Type", render: (r) => /* @__PURE__ */ React.createElement(TypePill, { type: r.type }) },
-      showWho && { key: "who", label: "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(ShLink, { id: r.shareholder_id }) },
+      showWho && { key: "who", label: rows.some((r) => r.customer_id) ? "Shareholder / customer" : "Shareholder", render: (r) => r.customer_id ? /* @__PURE__ */ React.createElement(BuyerLink, { row: r.rec }) : /* @__PURE__ */ React.createElement(ShLink, { id: r.shareholder_id }) },
       { key: "target", label: "For" },
       { key: "method", label: "Method" },
       { key: "reference", label: "Reference", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.reference) },
@@ -3888,6 +4113,103 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }
     )), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nominee ? /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 18 } }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nominee.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nominee.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", { className: "num" }, nominee.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nominee.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nominee.address || "—")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Nominee photo and NID"), /* @__PURE__ */ React.createElement("div", { className: "slots" }, [["photo", "Nominee photo", nominee.photo_doc_id], ["nid_front", "Nominee NID front", nominee.nid_front_doc_id], ["nid_back", "Nominee NID back", nominee.nid_back_doc_id]].map((k) => /* @__PURE__ */ React.createElement(KycCard, { key: k[0], owner: "nominee", ownerId: nominee.id, slot: k[0], label: k[1], doc: dcl(k[2]), canEdit: w }))))) : /* @__PURE__ */ React.createElement(Empty, { icon: "user", title: "No nominee recorded", text: "Add a nominee by editing this shareholder.", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("shareholder", { shareholder: sh }) }, "Edit shareholder") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
   }
+  function CustomersPage() {
+    const { db, user, go, open, confirm, run, S } = useApp();
+    const w = can(user, "write");
+    const [q, setQ] = useState("");
+    const [flt, setFlt] = useState("all");
+    const all = useMemo(() => (db.customers || []).filter(live).map((c) => {
+      const s = Calc.customer(db, c);
+      return { id: c.id, c, s, code: c.code, name: c.full_name, phone: c.phone || "", total: s.total, paid: s.paid, due: s.due, status: c.status };
+    }), [db]);
+    const dupKey = useMemo(() => {
+      const m = {};
+      all.forEach((r) => {
+        [["p", digits(r.c.phone)], ["e", String(r.c.email || "").trim().toLowerCase()], ["n", String(r.c.nid || "").replace(/\s/g, "")]].forEach((x) => {
+          if (x[1]) {
+            const k = x[0] + x[1];
+            m[k] = (m[k] || 0) + 1;
+          }
+        });
+      });
+      return m;
+    }, [all]);
+    const shared = (r) => {
+      const out = [];
+      if (digits(r.c.phone) && dupKey["p" + digits(r.c.phone)] > 1) out.push("phone");
+      const e = String(r.c.email || "").trim().toLowerCase();
+      if (e && dupKey["e" + e] > 1) out.push("email");
+      const n = String(r.c.nid || "").replace(/\s/g, "");
+      if (n && dupKey["n" + n] > 1) out.push("NID");
+      return out;
+    };
+    const tests = { all: () => true, Active: (r) => r.c.status === "Active", Inactive: (r) => r.c.status === "Inactive", Due: (r) => r.due > 4e-3, "No plan": (r) => r.s.plans.length === 0 };
+    const rows = all.filter(tests[flt]).filter((r) => {
+      const t = q.trim().toLowerCase();
+      return !t || (r.name + " " + r.code + " " + r.phone + " " + (r.c.nid || "") + " " + (r.c.email || "")).toLowerCase().indexOf(t) >= 0;
+    });
+    const opts = ["all", "Active", "Inactive", "Due", "No plan"].map((k) => ({ id: k, label: k === "all" ? "All" : k, count: all.filter(tests[k]).length }));
+    const archive = async (r) => {
+      const a = await confirm({ title: "Archive " + r.name + "?", message: "The record is hidden from lists but kept for the audit trail. It cannot be archived while it has construction plans.", confirmLabel: "Archive", danger: true, reason: true });
+      if (a.ok) run(() => S.archiveCustomer(r.id, a.reason), r.name + " archived");
+    };
+    const cols = [
+      { key: "code", label: "ID", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.code) },
+      { key: "name", label: "Name", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "cell-name" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, r.name), /* @__PURE__ */ React.createElement("span", null, r.c.profession || ""))) },
+      { key: "phone", label: "Phone", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "num" }, r.phone || "—") },
+      { key: "flag", label: "Check", noSort: true, render: (r) => {
+        const s = shared(r);
+        return s.length ? /* @__PURE__ */ React.createElement("span", { className: "chip", title: "Another customer has the same value. Family members can share a phone or email." }, "Shared ", s.join(", ")) : null;
+      } },
+      { key: "total", label: "Construction total", align: "r", render: (r) => M(r.total) },
+      { key: "paid", label: "Paid", align: "r", render: (r) => MIn(r.paid) },
+      { key: "due", label: "Due", align: "r", render: (r) => MDue(r.due) },
+      { key: "status", label: "Status", render: (r) => /* @__PURE__ */ React.createElement(Status, { v: r.status }) },
+      { key: "actions", label: "Actions", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "eye", onClick: (e) => {
+        e.stopPropagation();
+        go("customer", { id: r.id });
+      } }, "View"), /* @__PURE__ */ React.createElement(RowMenu, { items: [
+        { label: "Edit", icon: "edit", hidden: !w, onClick: () => open("customer", { customer: r.c }) },
+        { label: "New construction plan", icon: "wrench", hidden: !w, onClick: () => open("customerPlan", { customerId: r.id }) },
+        { label: "Archive", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
+      ] })) }
+    ];
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Customers", sub: "People who pay construction money directly, without holding land shares. Kept separate from shareholders.", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customer", {}) }, "Add customer") }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID, email" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 10, onRowClick: (r) => go("customer", { id: r.id }), empty: { title: "No customers yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add a customer to record construction plans and payments.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customer", {}) }, "Add customer") : null } })));
+  }
+  function CustomerPage({ id, tab: tab0 }) {
+    const { db, user, go, open, confirm, run, S } = useApp();
+    const w = can(user, "write");
+    const [tab, setTab] = useState(tab0 || "plans");
+    useEffect(() => {
+      setTab(tab0 || "plans");
+    }, [tab0, id]);
+    const c = Calc.byId(db.customers || [], id);
+    if (!c || !live(c)) return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "Customer not found", text: can(user, "archive") ? "This record may have been archived." : "This record is not available.", action: /* @__PURE__ */ React.createElement(Btn, { onClick: () => go("customers") }, "Back to customers") }));
+    const cs = Calc.customer(db, c), nom = cs.nominee, ledger = buildLedger(db, { customerId: id });
+    const logs = db.audit_logs.filter((a) => a.customer_id === id).sort((a, b) => b.at.localeCompare(a.at));
+    const tabs = [{ id: "plans", label: "Plans & payments", count: cs.plans.length }, { id: "payments", label: "Payment history", count: ledger.length }, { id: "overview", label: "Profile" }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity", count: logs.length }];
+    const archive = async () => {
+      const a = await confirm({ title: "Archive " + c.full_name + "?", message: "The record is hidden from lists but kept for the audit trail. It cannot be archived while it has construction plans.", confirmLabel: "Archive", danger: true, reason: true });
+      if (a.ok) {
+        const r = await run(() => S.archiveCustomer(id, a.reason), c.full_name + " archived");
+        if (r.ok) go("customers");
+      }
+    };
+    const archiveNom = async () => {
+      const a = await confirm({ title: "Archive nominee?", message: "The nominee is hidden but kept for the audit trail.", confirmLabel: "Archive", danger: true, reason: true });
+      if (a.ok) run(() => S.archiveCustomerNominee(nom.id, a.reason), "Nominee archived");
+    };
+    const planCols = [
+      { key: "code", label: "Plan", render: (x) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, x.p.code) },
+      { key: "unit", label: "Unit", render: (x) => x.p.unit_id ? planUnitLabel(db, x.p) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "Not linked yet") },
+      { key: "total", label: "Total", align: "r", render: (x) => M(x.s.total) },
+      { key: "paid", label: "Paid", align: "r", render: (x) => MIn(x.s.paid) },
+      { key: "due", label: "Due", align: "r", render: (x) => MDue(x.s.due) },
+      { key: "status", label: "Status", render: (x) => /* @__PURE__ */ React.createElement(Status, { v: x.s.status }) },
+      { key: "actions", label: "", align: "r", render: (x) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "eye", onClick: () => go("construction", { planId: x.p.id }) }, "Open"), w && x.s.due > 4e-3 && /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => open("consPayment", { planId: x.p.id }) }, "Add payment")) }
+    ].map((col) => Object.assign({}, col, { sortValue: void 0 }));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("customers") }, "All customers")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("h1", { style: { fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 } }, c.full_name), /* @__PURE__ */ React.createElement(Status, { v: c.status })), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, c.code), c.phone ? " · " : "", /* @__PURE__ */ React.createElement("span", { className: "num" }, c.phone), c.profession ? " · " + c.profession : "", c.designation ? ", " + c.designation : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archive }, "Archive")))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total construction contribution", value: fmtMoney(cs.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(cs.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: cs.due > 4e-3 ? "due" : void 0, value: fmtMoney(cs.due) })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement(Tabs, { tabs, value: tab, onChange: setTab }), tab === "plans" && /* @__PURE__ */ React.createElement(DataTable, { cols: planCols, rows: cs.plans, pageSize: 10, onRowClick: (x) => go("construction", { planId: x.p.id }), empty: { title: "No construction plan yet", text: "Create a plan to set the total this customer will pay. A unit is not needed now.", icon: "wrench", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan") } }), tab === "payments" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(LedgerTable, { rows: ledger, showWho: false, pageSize: 10, empty: { title: "No payments yet", text: "Construction payments for this customer will appear here.", icon: "card" } })), tab === "overview" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Email"), /* @__PURE__ */ React.createElement("dd", null, c.email || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, c.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, c.address || "—"), /* @__PURE__ */ React.createElement("dt", null, "Profession"), /* @__PURE__ */ React.createElement("dd", null, c.profession || "—"), /* @__PURE__ */ React.createElement("dt", null, "Designation"), /* @__PURE__ */ React.createElement("dd", null, c.designation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Registered"), /* @__PURE__ */ React.createElement("dd", null, c.registration_date ? fmtDate(c.registration_date) : "—"), /* @__PURE__ */ React.createElement("dt", null, "Remarks"), /* @__PURE__ */ React.createElement("dd", null, c.remarks || "—"))), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nom ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nom.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nom.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", null, nom.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nom.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nom.address || "—")), /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 12 } }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit nominee"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archiveNom }, "Archive nominee"))) : /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "No nominee recorded", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("customer", { customer: c }) }, "Add nominee") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
+  }
   function SalesPage({ newBooking }) {
     const { db, user, go, open, confirm, run, S } = useApp();
     const w = can(user, "write");
@@ -3981,20 +4303,20 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     return planId ? /* @__PURE__ */ React.createElement(PlanDetail, { id: planId }) : /* @__PURE__ */ React.createElement(PlanList, null);
   }
   function PlanList() {
-    const { db, user, go, open } = useApp();
+    const { db, user, go, open, auth } = useApp();
     const w = can(user, "write");
     const [q, setQ] = useState("");
     const [flt, setFlt] = useState("all");
     const all = useMemo(() => db.construction_plans.filter((p) => live(p) && p.status !== "Cancelled").map((p) => {
       const s = Calc.plan(db, p), u = Calc.byId(db.units, p.unit_id);
-      return { id: p.id, p, s, unit: u.code, name: shName(db, p.shareholder_id), total: s.total, paid: s.paid, due: s.due, pct: s.pctExact, last: s.last ? s.last.payment_date : "", status: s.status };
+      return { id: p.id, p, s, unit: u ? u.code : "No unit yet", name: buyerName(db, p), total: s.total, paid: s.paid, due: s.due, pct: s.pctExact, last: s.last ? s.last.payment_date : "", status: s.status };
     }), [db]);
     const rows = all.filter((r) => (flt === "all" || r.status === flt) && (!q.trim() || (r.unit + " " + r.name + " " + r.p.code).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
     const t = { total: sum(all, (r) => r.total), paid: sum(all, (r) => r.paid), due: sum(all, (r) => r.due) };
     const opts = ["all", "In Progress", "Not Started", "Completed"].map((k) => ({ id: k, label: k === "all" ? "All" : k, count: k === "all" ? all.length : all.filter((r) => r.status === k).length }));
     const cols = [
       { key: "unit", label: "Unit", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "cell-name" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, r.unit), /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.p.code))) },
-      { key: "name", label: "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(ShLink, { id: r.p.shareholder_id }) },
+      { key: "name", label: all.some((r) => r.p.customer_id) ? "Shareholder / customer" : "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(BuyerLink, { row: r.p }) },
       { key: "total", label: "Total contribution", align: "r", render: (r) => M(r.total) },
       { key: "paid", label: "Total paid", align: "r", render: (r) => MIn(r.paid) },
       { key: "due", label: "Remaining due", align: "r", render: (r) => MDue(r.due) },
@@ -4009,7 +4331,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         open("consPayment", { planId: r.id });
       } }, "Add payment"), /* @__PURE__ */ React.createElement(RowMenu, { items: [{ label: "Print statement (A4)", icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: r.id } }) }] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Construction contributions", sub: "One total per shareholder and unit. Clients pay any amount, whenever they choose. Separate from land share payments.", flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, rows.length > 0 && /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "report", args: { reportId: "cons_contribution" } }) }, "Print summary"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("plan", {}) }, "Set total contribution")) }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contributions set", value: fmtCompact(t.total), title: fmtMoney(t.total), sub: all.length + " units" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtCompact(t.paid), title: fmtMoney(t.paid), flow: "in", sub: t.total ? fmtPct(t.paid / t.total * 100) + " of total" : "" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: t.due > 4e-3 ? "due" : void 0, value: fmtCompact(t.due), title: fmtMoney(t.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Not started", value: all.filter((r) => r.status === "Not Started").length, sub: "No payment yet" })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search unit, shareholder, plan" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 10, onRowClick: (r) => go("construction", { planId: r.id }), empty: { title: "No construction contributions", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Set a total for an assigned unit.", icon: "wrench", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("plan", {}) }, "Set total contribution") : null } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Construction contributions", sub: "One total per shareholder and unit. Clients pay any amount, whenever they choose. Separate from land share payments.", flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, rows.length > 0 && /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "report", args: { reportId: "cons_contribution" } }) }, "Print summary"), w && auth && /* @__PURE__ */ React.createElement(Btn, { icon: "plus", onClick: () => open("customerPlan", {}) }, "New customer plan"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("plan", {}) }, "Set total contribution")) }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contributions set", value: fmtCompact(t.total), title: fmtMoney(t.total), sub: all.length + " units" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtCompact(t.paid), title: fmtMoney(t.paid), flow: "in", sub: t.total ? fmtPct(t.paid / t.total * 100) + " of total" : "" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: t.due > 4e-3 ? "due" : void 0, value: fmtCompact(t.due), title: fmtMoney(t.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Not started", value: all.filter((r) => r.status === "Not Started").length, sub: "No payment yet" })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search unit, shareholder, plan" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 10, onRowClick: (r) => go("construction", { planId: r.id }), empty: { title: "No construction contributions", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Set a total for an assigned unit.", icon: "wrench", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("plan", {}) }, "Set total contribution") : null } })));
   }
   function PlanDetail({ id }) {
     const { db, user, go, open } = useApp();
@@ -4017,7 +4339,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const plan = Calc.byId(db.construction_plans, id);
     if (!plan || !live(plan)) return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "wrench", title: "Contribution not found", action: /* @__PURE__ */ React.createElement(Btn, { onClick: () => go("construction") }, "Back to contributions") }));
     const pc = Calc.plan(db, plan), unit = Calc.byId(db.units, plan.unit_id);
-    const ledger = buildLedger(db, { shareholderId: plan.shareholder_id }).filter((l) => l.type === "cons" && l.rec.plan_id === id);
+    const ledger = buildLedger(db, plan.customer_id ? { customerId: plan.customer_id } : { shareholderId: plan.shareholder_id }).filter((l) => l.type === "cons" && l.rec.plan_id === id);
     const asc = ledger.slice().sort((a, b) => a.date.localeCompare(b.date) || a.rec.created_at.localeCompare(b.rec.created_at));
     let run = pc.total;
     const bal = {};
@@ -4039,7 +4361,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         { label: "Reverse entry", icon: "undo", danger: true, hidden: !(r.canReverse && can(user, "reverse")), onClick: () => open("reverse", { kind: "cons", id: r.id }) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: "Unit " + unit.code, sub: plan.code + " · " + unit.size_sqft + " sq ft · " + floorName(unit.floor), flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(ShLink, { id: plan.shareholder_id }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: pc.due > 4e-3 ? "due" : void 0, value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: unit ? "Unit " + unit.code : "Customer plan " + plan.code, sub: unit ? plan.code + " · " + unit.size_sqft + " sq ft · " + floorName(unit.floor) : plan.code + " · No unit linked yet", flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, plan.customer_id ? "Customer" : "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(BuyerLink, { row: plan }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: pc.due > 4e-3 ? "due" : void 0, value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
   }
   function ExpenseTable({ rows, pageSize = 10, empty }) {
     const { db, user, open, confirm, run, S } = useApp();
@@ -4187,7 +4509,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     ];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Audit log", sub: "Every important action, who did it and when. Entries cannot be edited or deleted." }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search summary or reason" }), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 180 } }, /* @__PURE__ */ React.createElement(Sel, { value: act, onChange: setAct, options: uniq("action"), placeholder: "All actions", "aria-label": "Action" })), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 160 } }, /* @__PURE__ */ React.createElement(Sel, { value: ent, onChange: setEnt, options: uniq("entity_type").map((e) => ({ value: e, label: e.replace("_", " ") })), placeholder: "All record types", "aria-label": "Record type" })), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 160 } }, /* @__PURE__ */ React.createElement(Sel, { value: usr, onChange: setUsr, options: db.users.map((u) => ({ value: u.id, label: u.name })), placeholder: "All users", "aria-label": "User" }))), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 14, onRowClick: (a) => open("audit", { id: a.id }), summary: rows.length + " of " + logs.length + " entries", empty: { title: "No entries match", text: "Clear the search or filters.", icon: "shield" } })));
   }
-  const TABLE_MAP = [["shareholders", "shareholders"], ["nominees", "nominees"], ["units", "units"], ["share_bookings", "share_bookings"], ["share_payments", "share_payments"], ["construction_plans", "construction_plans"], ["construction_payments", "construction_payments"], ["project_expenses", "project_expenses"], ["contractors", "contractors"], ["contract_installments", "contract_installments"], ["documents", "documents"], ["audit_logs", "audit_logs"], ["users", "users"]];
+  const TABLE_MAP = [["shareholders", "shareholders"], ["nominees", "nominees"], ["customers", "customers"], ["customer_nominees", "customer_nominees"], ["units", "units"], ["share_bookings", "share_bookings"], ["share_payments", "share_payments"], ["construction_plans", "construction_plans"], ["construction_payments", "construction_payments"], ["project_expenses", "project_expenses"], ["contractors", "contractors"], ["contract_installments", "contract_installments"], ["documents", "documents"], ["audit_logs", "audit_logs"], ["users", "users"]];
   function SettingsPage() {
     const { db, user, S, run, confirm, repoKind, setUserId, auth } = useApp();
     const st2 = db.settings[0], admin = can(user, "settings");
@@ -4330,7 +4652,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   const GIN = (v) => /* @__PURE__ */ React.createElement("span", { className: "m-in" }, fmtMoney(v));
   const RDUE = (v) => /* @__PURE__ */ React.createElement("span", { className: v > 4e-3 ? "m-due" : "m-b" }, fmtMoney(v));
   const INAMT = (rec) => rec && rec.kind === "payment" && rec.status === "Posted" ? GIN(rec.amount) : /* @__PURE__ */ React.createElement("span", { className: "m-b" }, fmtMoney(rec ? rec.amount : 0));
-  const partyBox = (db, sh) => /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], ["Shareholder ID", sh.code], ["Phone", sh.phone], ["NID", maskNid(sh.nid)], ["Address", sh.address], ["Email", sh.email]] });
+  const partyBox = (db, sh, label) => /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [[label || "Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], [(label || "Shareholder") + " ID", sh.code], ["Phone", sh.phone], ["NID", maskNid(sh.nid)], ["Address", sh.address], ["Email", sh.email]] });
   const PRINT_DOCS = {
     /* Share and construction payment receipts */
     receipt: {
@@ -4338,12 +4660,13 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       render: (ctx, a) => {
         const db = ctx.db, share = a.kind === "share", p = Calc.byId(share ? db.share_payments : db.construction_payments, a.id);
         if (!p) return /* @__PURE__ */ React.createElement(Missing, null);
-        const sh = Calc.byId(db.shareholders, p.shareholder_id), b = share ? Calc.byId(db.share_bookings, p.booking_id) : null, u = !share ? Calc.byId(db.units, p.unit_id) : null, plan = !share ? Calc.byId(db.construction_plans, p.plan_id) : null;
+        const sh = !share && p.customer_id ? Calc.byId(db.customers, p.customer_id) : Calc.byId(db.shareholders, p.shareholder_id), b = share ? Calc.byId(db.share_bookings, p.booking_id) : null, u = !share ? Calc.byId(db.units, p.unit_id) : null, plan = !share ? Calc.byId(db.construction_plans, p.plan_id) : null;
         const bs = b ? Calc.bookingSummary(db, b) : null, pc = plan ? Calc.plan(db, plan) : null;
         const total = share ? bs.grand : pc.total, paidAt = share ? asOf(db.share_payments, p, "booking_id") : asOf(db.construction_payments, p, "plan_id"), dueAt = roundMoney(total - paidAt);
         const att = okDoc(db, p.attachment_doc_id), reversed = p.status === "Reversed", isRev = p.kind === "reversal";
         const unit = share ? db.units.filter((x) => live(x) && x.shareholder_id === sh.id) : [u];
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh)), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : "Unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [["Booking", b.code], ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"], ["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: () => INAMT(p) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: methodLabel(p), x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", GIN(paidAt), "Including this payment"], ["Remaining due", RDUE(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
+        if (!sh) return /* @__PURE__ */ React.createElement(Missing, null);
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh, !share && p.customer_id ? "Customer" : void 0)), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : u ? "Unit" : "Construction plan" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [["Booking", b.code], ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : (u ? [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"]] : [["Unit", "Not linked yet"]]).concat([["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]]) })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: () => INAMT(p) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: methodLabel(p), x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", GIN(paidAt), "Including this payment"], ["Remaining due", RDUE(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
       }
     },
     /* Share booking / transaction document */
@@ -4368,14 +4691,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       render: (ctx, a) => {
         const db = ctx.db, plan = Calc.byId(db.construction_plans, a.planId);
         if (!plan) return /* @__PURE__ */ React.createElement(Missing, null);
-        const sh = Calc.byId(db.shareholders, plan.shareholder_id), u = Calc.byId(db.units, plan.unit_id), pc = Calc.plan(db, plan);
+        const sh = plan.customer_id ? Calc.byId(db.customers, plan.customer_id) : Calc.byId(db.shareholders, plan.shareholder_id), u = Calc.byId(db.units, plan.unit_id), pc = Calc.plan(db, plan);
         const pays = pc.payments.slice().sort((x, y) => x.payment_date.localeCompare(y.payment_date) || x.created_at.localeCompare(y.created_at));
         let run = pc.total;
         const rows = pays.map((p, i) => {
           run = roundMoney(run - p.amount);
           return { n: i + 1, date: fmtDate(p.payment_date), rc: p.receipt_no, m: methodLabel(p), x: p.reference || "—", note: p.note || (p.kind === "reversal" ? "Reversal" : ""), a: p.amount, bal: run, _p: p, _cls: p.status === "Reversed" ? "strike" : "" };
         });
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Construction contribution statement", docNo: "CS-" + plan.code + "-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement(Sect, { title: "Shareholder and unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], ["Shareholder ID", sh.code], ["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"], ["Contribution ref.", plan.code], ["Status", pc.status]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Position as of today" }, /* @__PURE__ */ React.createElement(Boxes, { items: [["Total contribution", fmtMoney(pc.total)], ["Total paid", GIN(pc.paid), pc.count + " payment" + (pc.count === 1 ? "" : "s")], ["Remaining due", RDUE(pc.due)], ["Payment progress", fmtPct(pc.pctExact)]] }), /* @__PURE__ */ React.createElement(PBar, { pct: pc.pct })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment history" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "#", k: "n", w: "6%" }, { l: "Date", k: "date" }, { l: "Receipt no.", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Note", k: "note" }, { l: "Amount", r: true, f: (r) => INAMT(r._p) }, { l: "Due after", r: true, f: (r) => RDUE(r.bal) }], rows, foot: { 4: "Total paid", 6: GIN(pc.paid), 7: RDUE(pc.due) }, empty: "No payment has been recorded yet." })), /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "There is no fixed installment schedule. The client may pay any amount on any date until the total contribution is settled. Reversed entries are shown struck through and are cancelled by a matching reversal."), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Shareholder / client", sh.full_name]] }));
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Construction contribution statement", docNo: "CS-" + plan.code + "-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement(Sect, { title: plan.customer_id ? "Customer and plan" : "Shareholder and unit" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [[plan.customer_id ? "Customer" : "Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], [plan.customer_id ? "Customer ID" : "Shareholder ID", sh.code]].concat(u ? [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"]] : [["Unit", "Not linked yet"]]).concat([["Contribution ref.", plan.code], ["Status", pc.status]]) })), /* @__PURE__ */ React.createElement(Sect, { title: "Position as of today" }, /* @__PURE__ */ React.createElement(Boxes, { items: [["Total contribution", fmtMoney(pc.total)], ["Total paid", GIN(pc.paid), pc.count + " payment" + (pc.count === 1 ? "" : "s")], ["Remaining due", RDUE(pc.due)], ["Payment progress", fmtPct(pc.pctExact)]] }), /* @__PURE__ */ React.createElement(PBar, { pct: pc.pct })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment history" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "#", k: "n", w: "6%" }, { l: "Date", k: "date" }, { l: "Receipt no.", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Note", k: "note" }, { l: "Amount", r: true, f: (r) => INAMT(r._p) }, { l: "Due after", r: true, f: (r) => RDUE(r.bal) }], rows, foot: { 4: "Total paid", 6: GIN(pc.paid), 7: RDUE(pc.due) }, empty: "No payment has been recorded yet." })), /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "There is no fixed installment schedule. The client may pay any amount on any date until the total contribution is settled. Reversed entries are shown struck through and are cancelled by a matching reversal."), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Shareholder / client", sh.full_name]] }));
       }
     },
     /* Shareholder financial statement */
@@ -4683,6 +5006,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   const NAV = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "shareholders", label: "Shareholders", icon: "users" },
+    { id: "customers", label: "Customers", icon: "users", prodOnly: true },
     { id: "sales", label: "Share Sales", icon: "tag" },
     { id: "project", label: "Project Details", icon: "info" },
     { id: "units", label: "Units", icon: "building" },
@@ -4694,14 +5018,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     { id: "audit", label: "Audit Log", icon: "shield" },
     { id: "settings", label: "Settings", icon: "sliders" }
   ];
-  const PAGES = { project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
+  const PAGES = { project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, customers: CustomersPage, customer: CustomerPage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
   function initialRoute() {
     let h = "";
     try {
       h = (location.hash || "").replace("#", "");
     } catch (e) {
     }
-    return { name: NAV.some((n) => n.id === h) ? h : "dashboard", params: {}, nonce: 0 };
+    return { name: NAV.some((n) => n.id === h && !n.prodOnly) ? h : "dashboard", params: {}, nonce: 0 };
   }
   function usePopover() {
     const [open, setOpen] = useState(false);
@@ -4735,6 +5059,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         if (items.length) g.push({ title, items: items.slice(0, 4) });
       };
       add("Shareholders", db.shareholders.filter((s) => live(s) && has(s.full_name + " " + s.code + " " + s.phone + " " + s.nid)).map((s) => ({ key: s.id, label: s.full_name, sub: s.code + " · " + s.phone, act: () => go("profile", { id: s.id }) })));
+      add("Customers", (db.customers || []).filter((c) => live(c) && has(c.full_name + " " + c.code + " " + c.phone + " " + c.nid)).map((c) => ({ key: c.id, label: c.full_name, sub: c.code + " · " + (c.phone || ""), act: () => go("customer", { id: c.id }) })));
       add("Units", db.units.filter((u) => live(u) && has(u.code)).map((u) => ({ key: u.id, label: "Unit " + u.code, sub: u.shareholder_id ? shName(db, u.shareholder_id) : "Available", act: () => go("units") })));
       add("Share bookings", db.share_bookings.filter((b) => live(b) && has(b.code)).map((b) => ({ key: b.id, label: b.code, sub: shName(db, b.shareholder_id), act: () => go("profile", { id: b.shareholder_id, tab: "bookings" }) })));
       add("Payments", db.share_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "share", id: p.id }) })).concat(db.construction_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "cons", id: p.id }) }))));
@@ -4798,7 +5123,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   function LoadingShell() {
     return /* @__PURE__ */ React.createElement("div", { className: "shell" }, /* @__PURE__ */ React.createElement("aside", { className: "side" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, APP_CONFIG.companyName), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName)), NAV.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, className: "skel", style: { height: 34, margin: "3px 4px" } }))), /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { className: "top" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 36, width: 260 } })), /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 40, width: 220 } }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "skel", style: { height: 88 } }))), /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 280 } }), /* @__PURE__ */ React.createElement("span", { className: "sr", role: "status" }, "Loading project data"))));
   }
-  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
+  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", customer: "write", customerPlan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
   function App({ repo: repoProp, auth }) {
     const repoRef = useRef(null);
     if (!repoRef.current) repoRef.current = repoProp || createRepository();
@@ -4859,7 +5184,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setRoute((r) => ({ name, params: params || {}, nonce: r.nonce + 1 }));
       setDrawer(false);
       try {
-        if (name !== "profile") history.replaceState(null, "", "#" + name);
+        if (name !== "profile" && name !== "customer") history.replaceState(null, "", "#" + name);
       } catch (e) {
       }
       try {
@@ -4875,9 +5200,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     if (loadErr) return /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "alert", title: "The project data could not be loaded", text: String(loadErr.message || loadErr), action: /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => location.reload() }, "Reload") })));
     if (!db) return /* @__PURE__ */ React.createElement(LoadingShell, null);
     if (!user) return /* @__PURE__ */ React.createElement(AuthScreen, null, /* @__PURE__ */ React.createElement("h1", null, "Profile not found"), /* @__PURE__ */ React.createElement("p", { className: "muted" }, "Your sign-in is valid but your profile was not in the loaded data. Sign out and try again, or contact the project owner."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => auth.signOut() }, "Sign out"));
-    const st2 = db.settings[0], Page = PAGES[route.name] || DashboardPage, active = route.name === "profile" ? "shareholders" : route.name;
+    const st2 = db.settings[0], Page = PAGES[route.name] || DashboardPage, active = route.name === "profile" ? "shareholders" : route.name === "customer" ? "customers" : route.name;
     const bottom = [{ id: "dashboard", label: "Home", icon: "dashboard" }, { id: "shareholders", label: "People", icon: "users" }, { id: "sales", label: "Sales", icon: "tag" }, { id: "payments", label: "Payments", icon: "card" }];
-    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
+    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => !n.prodOnly || auth).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
       const C = MODAL_REGISTRY[m.name];
       return C ? /* @__PURE__ */ React.createElement(C, { key: m.id, ...m.props, onClose: () => setModals((x) => x.filter((y) => y.id !== m.id)) }) : null;
     }), conf && /* @__PURE__ */ React.createElement(ConfirmHost, { state: conf, onDone: (r) => {
