@@ -1698,6 +1698,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return digits(s.phone) && digits(s.phone) === digits(data.phone) || s.nid && s.nid === String(data.nid || "").replace(/\s/g, "") || s.full_name.trim().toLowerCase() === String(data.full_name || "").trim().toLowerCase();
       });
     };
+    S.setPaymentFollowup = async function() {
+      throw new AppError("Follow-up dates are not available in the demo. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
+    };
     S.findDuplicateCustomers = function(data, excludeId) {
       const db = getDb(), ph = digits(data.phone), em = String(data.email || "").trim().toLowerCase(), nid = String(data.nid || "").replace(/\s/g, ""), nm = String(data.full_name || "").trim().toLowerCase(), out = [];
       const chk = function(r, kind) {
@@ -3591,21 +3594,21 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     useEffect(() => {
       if (!touched) setVal(existing);
     }, [existing, targetId]);
-    const changed = enabled && !!targetId && val !== existing;
+    const changed = !!targetId && val !== existing;
     const save = async (paymentId) => {
       const r = await run(() => S.setPaymentFollowup({ targetType, targetId, dueDate: val, paymentId }, reqId), "Follow-up date saved");
       return r.ok;
     };
-    const field = enabled ? /* @__PURE__ */ React.createElement(Field, { label: "Next Payment Follow-up Date", full: true, hint: "Optional. On this date (Bangladesh time) the record is highlighted in red. No date means no highlight. A past date does not mark anything overdue. Recording a payment keeps the date; clear the box to remove it." }, /* @__PURE__ */ React.createElement(DateIn, { value: val, onChange: (v) => {
+    const field = /* @__PURE__ */ React.createElement(Field, { label: "Next Payment Follow-up Date", full: true, hint: (enabled ? "" : "Saving a date needs a database update that has not been applied yet; the payment itself is recorded normally. ") + "Optional. On this date (Bangladesh time) the record is highlighted in red. No date means no highlight. A past date does not mark anything overdue. Recording a payment keeps the date; clear the box to remove it." }, /* @__PURE__ */ React.createElement(DateIn, { value: val, onChange: (v) => {
       setTouched(true);
       setVal(v);
-    } })) : null;
+    } }));
     return { enabled, changed, val, field, pending, setPending, save };
   }
   function FollowupRetry({ fp, onClose, receiptOf }) {
     const [busy, setBusy] = useState(false);
     if (!fp.pending) return null;
-    return /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Payment ", fp.pending.label, " was recorded."), " The follow-up date could not be saved. The payment will not be recorded again.", /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", busy, onClick: async () => {
+    return /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Payment ", fp.pending.label, " was recorded."), " The follow-up date could not be saved", fp.enabled ? "" : " because a database update is required first (nothing was saved)", ". The payment will not be recorded again.", /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", busy, onClick: async () => {
       setBusy(true);
       const ok = await fp.save(fp.pending.id);
       setBusy(false);
