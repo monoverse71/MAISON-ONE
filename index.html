@@ -1129,13 +1129,34 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     followupsEnabled: function(db) {
       return Array.isArray(db.payment_followups);
     },
+    /* Unit assignment (migration 0026). A plan can be linked to a unit only while it is live, Active and has no unit. Eligible units: live, not already under another
+       active contribution, and either Available with no owner, or already owned by THIS plan's buyer. The database function is the final authority. */
+    planCanLinkUnit: function(p) {
+      return !!p && !p.archived_at && p.status === "Active" && !p.unit_id;
+    },
+    unitsForPlan: function(db, plan) {
+      if (!Calc.planCanLinkUnit(plan)) return [];
+      const sh = plan.shareholder_id || null, cu = plan.customer_id || null;
+      return db.units.filter(function(u) {
+        if (!live(u)) return false;
+        if (db.construction_plans.some(function(p) {
+          return live(p) && p.unit_id === u.id && p.status !== "Cancelled";
+        })) return false;
+        const ush = u.shareholder_id || null, ucu = u.customer_id || null;
+        if (u.status === "Available" && !ush && !ucu) return true;
+        return (ush || ucu) && ush === sh && ucu === cu;
+      });
+    },
+    /* > 0 when row a was saved AFTER row b. Uses the database's monotonic `seq` when both rows have it (0025); otherwise created_at, then id (older/mock data). */
+    followupCmp: function(a, b) {
+      if (a.seq != null && b.seq != null) return Number(a.seq) - Number(b.seq);
+      return String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id));
+    },
     followupFor: function(db, targetType, targetId) {
       const rows = (db.payment_followups || []).filter(function(r) {
         return r.target_type === targetType && (targetType === "share" ? r.booking_id === targetId : r.plan_id === targetId);
       });
-      rows.sort(function(a, b) {
-        return String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id));
-      });
+      rows.sort(Calc.followupCmp);
       return rows.length ? rows[rows.length - 1] : null;
     },
     followupDate: function(db, targetType, targetId) {
@@ -1149,7 +1170,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const latest = {};
       db.payment_followups.forEach(function(r) {
         const k = r.target_type + ":" + (r.target_type === "share" ? r.booking_id : r.plan_id), c = latest[k];
-        if (!c || String(r.created_at).localeCompare(String(c.created_at)) > 0 || r.created_at === c.created_at && String(r.id).localeCompare(String(c.id)) > 0) latest[k] = r;
+        if (!c || Calc.followupCmp(r, c) > 0) latest[k] = r;
       });
       Object.keys(latest).forEach(function(k) {
         const r = latest[k];
@@ -1697,6 +1718,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }).filter(function(s) {
         return digits(s.phone) && digits(s.phone) === digits(data.phone) || s.nid && s.nid === String(data.nid || "").replace(/\s/g, "") || s.full_name.trim().toLowerCase() === String(data.full_name || "").trim().toLowerCase();
       });
+    };
+    S.assignUnitToPlan = async function() {
+      throw new AppError("Linking a unit to a plan is not available in the demo. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
     };
     S.setPaymentFollowup = async function() {
       throw new AppError("Follow-up dates are not available in the demo. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
@@ -2652,6 +2676,27 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }
       await done();
       return true;
+    };
+    S.assignUnitToPlan = async function(input, requestId) {
+      guard("write");
+      const db = getDb(), plan = Calc.byId(db.construction_plans, input.planId);
+      if (!plan || plan.archived_at) throw new AppError("Plan not found.", "Not found", "NOT_FOUND");
+      if (!Calc.planCanLinkUnit(plan)) throw new AppError(plan.unit_id ? "This plan already has a unit." : "Choose an active plan.", "Cannot link", "VALIDATION");
+      if (!input.unitId) throw new AppError("Select a unit.", "Check the form", "VALIDATION");
+      if (!Calc.unitsForPlan(db, plan).some(function(u) {
+        return u.id === input.unitId;
+      })) throw new AppError("This unit cannot be linked to this plan. Choose an available unit or one that already belongs to the same owner.", "Cannot link", "VALIDATION");
+      try {
+        await rpc("assign_unit_to_plan", { p_request_id: reqId(requestId), p_plan_id: plan.id, p_unit_id: input.unitId });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return plan.id;
+        }
+        throw e;
+      }
+      await done();
+      return plan.id;
     };
     const RESTORE_ENTITY = { shareholders: "shareholder", nominees: "nominee", share_bookings: "booking", construction_plans: "plan", contractors: "contractor", documents: "document", customers: "customer", customer_nominees: "customer_nominee" };
     S.restoreRecord = async function(table, id, reason) {
@@ -4132,7 +4177,36 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     };
     return /* @__PURE__ */ React.createElement(Modal, { title: "Export · " + out.filename, sub: rows.length + " rows", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Close"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "copy", onClick: copy }, "Copy contents")) }, /* @__PURE__ */ React.createElement(Note, null, out.note, " Downloads are not available in this preview, so copy the contents instead."), /* @__PURE__ */ React.createElement("textarea", { ref: ta, className: "inp mono", readOnly: true, rows: 14, value: out.body, "aria-label": "Export contents", style: { whiteSpace: "pre", overflow: "auto" } }));
   }
-  const MODAL_REGISTRY = { shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
+  function AssignUnitForm({ planId, onClose, onSaved }) {
+    const { db, S, run } = useApp();
+    const reqId = useRequestId();
+    const plan = Calc.byId(db.construction_plans, planId);
+    const [unitId, setUnitId] = useState("");
+    const [err, setErr] = useState("");
+    const [busy, setBusy] = useState(false);
+    const units = plan ? Calc.unitsForPlan(db, plan) : [];
+    const submit = async () => {
+      if (!unitId) {
+        setErr("Select a unit.");
+        return;
+      }
+      setErr("");
+      setBusy(true);
+      const r = await run(() => S.assignUnitToPlan({ planId, unitId }, reqId), "Unit linked to the plan");
+      setBusy(false);
+      if (r.ok) {
+        onClose();
+        onSaved && onSaved(r.r);
+      }
+    };
+    if (!plan) return /* @__PURE__ */ React.createElement(Modal, { title: "Link a unit", onClose, footer: /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Close") }, /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Plan not found."));
+    const mine = (u) => !!(u.shareholder_id || u.customer_id);
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Link a unit to this plan", sub: plan.code + " · payments and the payment history are not changed.", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Link unit" }) }, !units.length && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "No eligible unit. Only an available unit, or a unit that already belongs to this owner and has no other contribution, can be linked."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit", req: true, err, hint: "An available unit is assigned to this plan's owner when linked." }, /* @__PURE__ */ React.createElement(SearchPick, { value: unitId, onChange: (v) => {
+      setUnitId(v);
+      setErr("");
+    }, placeholder: "Search unit", emptyText: "No eligible unit", options: units.map((u) => ({ value: u.id, label: u.code, sub: floorName(u.floor) + " · " + u.size_sqft + " sq ft · " + (mine(u) ? "Already this owner's unit" : "Available"), search: u.code })) }))));
+  }
+  const MODAL_REGISTRY = { planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
     const out = [];
@@ -4589,7 +4663,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         { label: "Reverse entry", icon: "undo", danger: true, hidden: !(r.canReverse && can(user, "reverse")), onClick: () => open("reverse", { kind: "cons", id: r.id }) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: unit ? "Unit " + unit.code : (plan.customer_id ? "Customer plan " : "Construction plan ") + plan.code, sub: unit ? plan.code + " · " + unit.size_sqft + " sq ft · " + floorName(unit.floor) : plan.code + " · No unit linked yet", flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, plan.customer_id ? "Customer" : "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(BuyerLink, { row: plan }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: pc.due > 4e-3 ? "due" : void 0, value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("construction") }, "All construction contributions")), /* @__PURE__ */ React.createElement(PageHead, { title: unit ? "Unit " + unit.code : (plan.customer_id ? "Customer plan " : "Construction plan ") + plan.code, sub: unit ? plan.code + " · " + unit.size_sqft + " sq ft · " + floorName(unit.floor) : plan.code + " · No unit linked yet", flow: "in", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "consStatement", args: { planId: id } }) }, "Print statement"), can(user, "approve") && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("planTotal", { planId: id }) }, "Change total"), w && Calc.planCanLinkUnit(plan) && /* @__PURE__ */ React.createElement(Btn, { icon: "plus", onClick: () => open("planUnit", { planId: id }) }, "Link unit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "card", onClick: () => open("consPayment", { planId: id }) }, "Add payment")) }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "muted" }, plan.customer_id ? "Customer" : "Shareholder"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16 } }, /* @__PURE__ */ React.createElement(BuyerLink, { row: plan }))), /* @__PURE__ */ React.createElement(Status, { v: pc.status }))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total contribution", value: fmtMoney(pc.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(pc.paid), flow: "in", sub: pc.count + " payment" + (pc.count === 1 ? "" : "s") }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: pc.due > 4e-3 ? "due" : void 0, value: fmtMoney(pc.due) }), /* @__PURE__ */ React.createElement(Stat, { label: "Payment progress", value: fmtPct(pc.pctExact), sub: pc.last ? "Last payment " + fmtDate(pc.last.payment_date) : "No payment yet" })), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: pc.pct, color: "var(--s-cons)", label: "Paid" }] }), pc.status === "Overpaid" && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Payments exceed the total contribution by ", fmtMoney(pc.paid - pc.total), ". This was confirmed when it was recorded."), /* @__PURE__ */ React.createElement(Card, { title: "Payment history", sub: "Pay any amount, any time. Each payment is its own record. Corrections are made by reversing and re-entering.", flush: true, actions: w && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "plus", onClick: () => open("consPayment", { planId: id }) }, "Add payment") }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows: ledger, pageSize: 10, rowClass: (r) => r.rec.status === "Reversed" ? "strike" : "", empty: { title: "No payments yet", text: "Payments against this contribution will appear here.", icon: "card", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("consPayment", { planId: id }) }, "Add payment") } })));
   }
   function ExpenseTable({ rows, pageSize = 10, empty }) {
     const { db, user, open, confirm, run, S } = useApp();
@@ -5354,7 +5428,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   function LoadingShell() {
     return /* @__PURE__ */ React.createElement("div", { className: "shell" }, /* @__PURE__ */ React.createElement("aside", { className: "side" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, APP_CONFIG.companyName), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName)), NAV.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, className: "skel", style: { height: 34, margin: "3px 4px" } }))), /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { className: "top" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 36, width: 260 } })), /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 40, width: 220 } }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "skel", style: { height: 88 } }))), /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 280 } }), /* @__PURE__ */ React.createElement("span", { className: "sr", role: "status" }, "Loading project data"))));
   }
-  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", customer: "write", customerPlan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
+  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planUnit: "write", customer: "write", customerPlan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
   function App({ repo: repoProp, auth }) {
     const repoRef = useRef(null);
     if (!repoRef.current) repoRef.current = repoProp || createRepository();
