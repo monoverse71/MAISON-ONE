@@ -1129,6 +1129,66 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     followupsEnabled: function(db) {
       return Array.isArray(db.payment_followups);
     },
+    /* Customer archive (migration 0027). Payments have no archived flag and are never edited; a customer payment counts as active only while its customer AND its plan are live.
+       Shareholder payments are not affected. Build the test once per calculation: const vis = Calc.payVisible(db); db.construction_payments.filter(vis). */
+    payVisible: function(db) {
+      const dc = {}, dp = {};
+      (db.customers || []).forEach(function(c) {
+        if (c.archived_at) dc[c.id] = 1;
+      });
+      (db.construction_plans || []).forEach(function(p) {
+        if (p.archived_at && p.customer_id) dp[p.id] = 1;
+      });
+      return function(p) {
+        return live(p) && !(p.customer_id && (dc[p.customer_id] || dp[p.plan_id]));
+      };
+    },
+    /* What archiving a customer will do, for the confirmation dialog. Mirrors the database rules; the database function is the final authority. */
+    customerArchiveImpact: function(db, id) {
+      const plans = (db.construction_plans || []).filter(function(p) {
+        return p.customer_id === id && live(p);
+      });
+      const pays = (db.construction_payments || []).filter(function(x) {
+        return x.customer_id === id;
+      });
+      const owned = (db.units || []).filter(function(u) {
+        return u.customer_id === id;
+      }), release = [], blocked = [];
+      owned.forEach(function(u) {
+        let why = "";
+        if ((db.construction_plans || []).some(function(p) {
+          return live(p) && p.unit_id === u.id && p.status !== "Cancelled" && p.customer_id !== id;
+        })) why = "it is also used by another active plan";
+        else if ((db.documents || []).some(function(d) {
+          return live(d) && d.unit_id === u.id && d.customer_id !== id;
+        })) why = "it is referenced by other active records";
+        else if (u.status !== "Assigned") why = "its status is " + u.status;
+        (why ? blocked : release).push({ unit: u, why });
+      });
+      const keep = plans.filter(function(p) {
+        return p.unit_id && !owned.some(function(u) {
+          return u.id === p.unit_id;
+        });
+      }).map(function(p) {
+        return Calc.byId(db.units, p.unit_id);
+      }).filter(Boolean);
+      const noms = (db.customer_nominees || []).filter(function(n) {
+        return n.customer_id === id && live(n);
+      }), nomIds = {};
+      noms.forEach(function(n) {
+        nomIds[n.id] = 1;
+      });
+      const payIds = {};
+      pays.forEach(function(x) {
+        payIds[x.id] = 1;
+      });
+      const docs = (db.documents || []).filter(function(d) {
+        return live(d) && (d.customer_id === id || d.customer_nominee_id && nomIds[d.customer_nominee_id] || d.construction_payment_id && payIds[d.construction_payment_id]);
+      });
+      return { plans, payments: pays.length, net: sum(pays, function(x) {
+        return x.amount;
+      }), release, blocked, keep, nominees: noms.length, documents: docs.length };
+    },
     /* Unit assignment (migration 0026). A plan can be linked to a unit only while it is live, Active and has no unit. Eligible units: live, not already under another
        active contribution, and either Available with no owner, or already owned by THIS plan's buyer. The database function is the final authority. */
     planCanLinkUnit: function(p) {
@@ -1318,7 +1378,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return e.amount;
       });
       const settings = db.settings[0];
-      const keys = lastMonthKeys(6);
+      const keys = lastMonthKeys(6), payVis = Calc.payVisible(db);
       const trend = keys.map(function(k) {
         return {
           key: k,
@@ -1329,7 +1389,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
             return p.amount;
           }),
           construction: sum(db.construction_payments.filter(function(p) {
-            return live(p) && monthKey(p.payment_date) === k;
+            return payVis(p) && monthKey(p.payment_date) === k;
           }), function(p) {
             return p.amount;
           }),
@@ -1365,7 +1425,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       };
       const recentPayments = db.share_payments.filter(live).map(function(p) {
         return { id: p.id, type: "Land Share", receipt: p.receipt_no, date: p.payment_date, who: shName2(p.shareholder_id), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
-      }).concat(db.construction_payments.filter(live).map(function(p) {
+      }).concat(db.construction_payments.filter(payVis).map(function(p) {
         return { id: p.id, type: "Construction", receipt: p.receipt_no, date: p.payment_date, who: (p.customer_id ? custName(p.customer_id) : shName2(p.shareholder_id)) + " · " + (p.unit_id ? unitCode(p.unit_id) : "No unit yet"), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
       })).sort(function(a, b) {
         return b.date.localeCompare(a.date) || b.receipt.localeCompare(a.receipt);
@@ -1718,6 +1778,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       }).filter(function(s) {
         return digits(s.phone) && digits(s.phone) === digits(data.phone) || s.nid && s.nid === String(data.nid || "").replace(/\s/g, "") || s.full_name.trim().toLowerCase() === String(data.full_name || "").trim().toLowerCase();
       });
+    };
+    S.archiveCustomerCascade = async function() {
+      throw new AppError("Archiving a customer with related records is not available in the demo. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
     };
     S.assignUnitToPlan = async function() {
       throw new AppError("Linking a unit to a plan is not available in the demo. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
@@ -2589,6 +2652,24 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       await rpc("archive_customer_nominee", { p_id: id, p_reason: reason.trim() });
       await done();
     };
+    S.archiveCustomerCascade = async function(id, reason, requestId) {
+      guard("archive");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason.", "Reason needed", "VALIDATION");
+      const c = Calc.byId(getDb().customers, id);
+      if (!c || c.archived_at) throw new AppError("Customer not found, or already archived.", "Not found", "NOT_FOUND");
+      let res = null;
+      try {
+        res = await rpc("archive_customer_cascade", { p_request_id: reqId(requestId), p_id: id, p_reason: reason.trim() });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return null;
+        }
+        throw e;
+      }
+      await done();
+      return res;
+    };
     S.createCustomerPlan = async function(f, requestId) {
       guard("write");
       need(V.customerPlan(f));
@@ -2812,7 +2893,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       dateLabel: "Payment date",
       cols: [{ k: "receipt", l: "Receipt" }, { k: "date", l: "Date", t: "date" }, { k: "name", l: "Shareholder" }, { k: "unit", l: "Unit" }, { k: "amount", l: "Amount", t: "money", total: true }, { k: "method", l: "Method" }, { k: "ref", l: "Reference" }, { k: "type", l: "Entry" }, { k: "status", l: "Status", t: "badge" }],
       build: function(db) {
-        return db.construction_payments.filter(live).map(function(p) {
+        return db.construction_payments.filter(Calc.payVisible(db)).map(function(p) {
           const bu = Calc.buyer(db, p), u = Calc.byId(db.units, p.unit_id);
           return { receipt: p.receipt_no, date: p.payment_date, name: bu.name, unit: u ? u.code : "No unit yet", amount: p.amount, method: methodLabel(p), ref: p.reference || "—", type: p.kind === "reversal" ? "Reversal" : "Payment", status: p.status };
         }).sort(byDateDesc("date"));
@@ -2890,8 +2971,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         }), function(p) {
           return p.amount;
         });
-        const cp = sum(db.construction_payments.filter(function(p) {
-          return live(p) && inRange(p.payment_date, f);
+        const payVis = Calc.payVisible(db), cp = sum(db.construction_payments.filter(function(p) {
+          return payVis(p) && inRange(p.payment_date, f);
         }), function(p) {
           return p.amount;
         });
@@ -4206,12 +4287,43 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setErr("");
     }, placeholder: "Search unit", emptyText: "No eligible unit", options: units.map((u) => ({ value: u.id, label: u.code, sub: floorName(u.floor) + " · " + u.size_sqft + " sq ft · " + (mine(u) ? "Already this owner's unit" : "Available"), search: u.code })) }))));
   }
-  const MODAL_REGISTRY = { planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
+  function CustomerArchiveForm({ customerId, onClose, onSaved }) {
+    const { db, S, run, user } = useApp();
+    const reqId = useRequestId();
+    const c = Calc.byId(db.customers || [], customerId);
+    const [reason, setReason] = useState("");
+    const [err, setErr] = useState("");
+    const [busy, setBusy] = useState(false);
+    if (!can(user, "archive")) return null;
+    if (!c || c.archived_at) return /* @__PURE__ */ React.createElement(Modal, { title: "Archive Customer & Related Records", onClose, footer: /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Close") }, /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "Customer not found, or already archived."));
+    const im = Calc.customerArchiveImpact(db, customerId);
+    const submit = async () => {
+      if (busy) return;
+      if (!reason.trim()) {
+        setErr("Give a reason. It is saved in the audit log.");
+        return;
+      }
+      setErr("");
+      setBusy(true);
+      const r = await run(() => S.archiveCustomerCascade(customerId, reason, reqId), c.full_name + " and related records archived");
+      setBusy(false);
+      if (r.ok) {
+        onClose();
+        onSaved && onSaved(r.r);
+      }
+    };
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Archive Customer & Related Records", sub: c.code + " · " + c.full_name, size: "narrow", onClose: busy ? () => {
+    } : onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose, disabled: busy }, "Cancel"), /* @__PURE__ */ React.createElement(Btn, { variant: "danger", busy, onClick: submit }, "Archive customer & related records")) }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, /* @__PURE__ */ React.createElement("p", { style: { color: "var(--ink-2)", margin: 0 } }, "This is one all-or-nothing step. If anything cannot be done, nothing is changed."), /* @__PURE__ */ React.createElement("ul", { className: "bs-list", style: { margin: 0 } }, /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Construction plans:"), " ", im.plans.length ? im.plans.length + " will be archived (" + im.plans.map((p) => p.code).join(", ") + ")." : "none."), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Units:"), " ", im.release.length ? "will be released and become Available again: " + im.release.map((x) => x.unit.code).join(", ") + "." : "none will be released.", im.keep.length ? " Not released (not owned by this customer): " + im.keep.map((u) => u.code).join(", ") + "." : ""), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Nominee and documents:"), " ", im.nominees, " nominee, ", im.documents, " document", im.documents === 1 ? "" : "s", " archived."), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Dashboard and totals:"), " the customer, their plans and their payments disappear from lists, dashboard totals and reports."), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Payment history:"), " ", im.payments, " payment record", im.payments === 1 ? "" : "s", " (", fmtMoney(im.net), " net) are not deleted or changed. The history is kept only in the Audit History."), /* @__PURE__ */ React.createElement("li", null, /* @__PURE__ */ React.createElement("b", null, "Cannot be undone here:"), " there is no restore screen.")), im.blocked.length > 0 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, im.blocked.map((b) => "Unit " + b.unit.code + " cannot be released automatically: " + b.why + ".").join(" "), " The database will refuse the archive until this is resolved."), /* @__PURE__ */ React.createElement(Field, { label: "Reason", req: true, err }, /* @__PURE__ */ React.createElement(Area, { value: reason, onChange: (v) => {
+      setReason(v);
+      setErr("");
+    }, placeholder: "Recorded in the audit log" }))));
+  }
+  const MODAL_REGISTRY = { customerArchive: CustomerArchiveForm, planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
-    const out = [];
+    const out = [], payVis = Calc.payVisible(db);
     const add = (type, p) => {
-      if (!live(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
+      if (!live(p) || type === "cons" && !payVis(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
       const b = type === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = type === "cons" ? Calc.byId(db.units, p.unit_id) : null;
       out.push({ id: p.id, type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, customer_id: p.customer_id || null, who: type === "cons" ? buyerName(db, p) : shName(db, p.shareholder_id), target: type === "share" ? b ? b.code : "—" : u ? u.code : (Calc.byId(db.construction_plans, p.plan_id) || {}).code || "—", amount: p.amount, method: methodLabel(p), reference: p.reference || "—", status: p.kind === "reversal" ? "Reversal" : p.status, canReverse: p.kind === "payment" && p.status === "Posted" });
     };
@@ -4447,10 +4559,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       return !t || (r.name + " " + r.code + " " + r.phone + " " + (r.c.nid || "") + " " + (r.c.email || "")).toLowerCase().indexOf(t) >= 0;
     });
     const opts = ["all", "Active", "Inactive", "Due", "No plan"].map((k) => ({ id: k, label: k === "all" ? "All" : k, count: all.filter(tests[k]).length }));
-    const archive = async (r) => {
-      const a = await confirm({ title: "Archive " + r.name + "?", message: "The record is hidden from lists but kept for the audit trail. It cannot be archived while it has construction plans.", confirmLabel: "Archive", danger: true, reason: true });
-      if (a.ok) run(() => S.archiveCustomer(r.id, a.reason), r.name + " archived");
-    };
+    const archive = (r) => open("customerArchive", { customerId: r.id });
     const cols = [
       { key: "code", label: "ID", render: (r) => fu.customer[r.id] ? /* @__PURE__ */ React.createElement("span", { className: "mono fu-id" }, r.code, /* @__PURE__ */ React.createElement(FuPill, null)) : /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.code) },
       { key: "name", label: "Name", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "cell-name" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, r.name), /* @__PURE__ */ React.createElement("span", null, r.c.profession || ""))) },
@@ -4469,7 +4578,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       } }, "View"), /* @__PURE__ */ React.createElement(RowMenu, { items: [
         { label: "Edit", icon: "edit", hidden: !w, onClick: () => open("customer", { customer: r.c }) },
         { label: "New construction plan", icon: "wrench", hidden: !w, onClick: () => open("customerPlan", { customerId: r.id }) },
-        { label: "Archive", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
+        { label: "Archive Customer & Related Records", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
       ] })) }
     ];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Customers", sub: "People who pay construction money directly, without holding land shares. Kept separate from shareholders.", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customer", {}) }, "Add customer") }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID, email" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 10, rowClass: (r) => fu.customer[r.id] ? "row-fu" : "", onRowClick: (r) => go("customer", { id: r.id }), empty: { title: "No customers yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add a customer to record construction plans and payments.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customer", {}) }, "Add customer") : null } })));
@@ -4487,13 +4596,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const cs = Calc.customer(db, c), nom = cs.nominee, ledger = buildLedger(db, { customerId: id });
     const logs = db.audit_logs.filter((a) => a.customer_id === id).sort((a, b) => b.at.localeCompare(a.at));
     const tabs = [{ id: "plans", label: "Plans & payments", count: cs.plans.length }, { id: "payments", label: "Payment history", count: ledger.length }, { id: "overview", label: "Profile" }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity", count: logs.length }];
-    const archive = async () => {
-      const a = await confirm({ title: "Archive " + c.full_name + "?", message: "The record is hidden from lists but kept for the audit trail. It cannot be archived while it has construction plans.", confirmLabel: "Archive", danger: true, reason: true });
-      if (a.ok) {
-        const r = await run(() => S.archiveCustomer(id, a.reason), c.full_name + " archived");
-        if (r.ok) go("customers");
-      }
-    };
+    const archive = () => open("customerArchive", { customerId: id, onSaved: () => go("customers") });
     const archiveNom = async () => {
       const a = await confirm({ title: "Archive nominee?", message: "The nominee is hidden but kept for the audit trail.", confirmLabel: "Archive", danger: true, reason: true });
       if (a.ok) run(() => S.archiveCustomerNominee(nom.id, a.reason), "Nominee archived");
@@ -4507,7 +4610,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       { key: "status", label: "Status", render: (x) => /* @__PURE__ */ React.createElement(Status, { v: x.s.status }) },
       { key: "actions", label: "", align: "r", render: (x) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "eye", onClick: () => go("construction", { planId: x.p.id }) }, "Open"), w && x.s.due > 4e-3 && /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => open("consPayment", { planId: x.p.id }) }, "Add payment")) }
     ].map((col) => Object.assign({}, col, { sortValue: void 0 }));
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("customers") }, "All customers")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("h1", { style: { fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 } }, c.full_name), /* @__PURE__ */ React.createElement(Status, { v: c.status })), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono" + (fu.customer[c.id] ? " fu-id" : "") }, c.code), fu.customer[c.id] && /* @__PURE__ */ React.createElement(FuPill, null), c.phone ? " · " : "", /* @__PURE__ */ React.createElement("span", { className: "num" }, c.phone), c.profession ? " · " + c.profession : "", c.designation ? ", " + c.designation : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archive }, "Archive")))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total construction contribution", value: fmtMoney(cs.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(cs.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: cs.due > 4e-3 ? "due" : void 0, value: fmtMoney(cs.due) })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement(Tabs, { tabs, value: tab, onChange: setTab }), tab === "plans" && /* @__PURE__ */ React.createElement(DataTable, { cols: planCols, rows: cs.plans, pageSize: 10, onRowClick: (x) => go("construction", { planId: x.p.id }), empty: { title: "No construction plan yet", text: "Create a plan to set the total this customer will pay. A unit is not needed now.", icon: "wrench", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan") } }), tab === "payments" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(LedgerTable, { rows: ledger, showWho: false, pageSize: 10, empty: { title: "No payments yet", text: "Construction payments for this customer will appear here.", icon: "card" } })), tab === "overview" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Email"), /* @__PURE__ */ React.createElement("dd", null, c.email || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, c.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, c.address || "—"), /* @__PURE__ */ React.createElement("dt", null, "Profession"), /* @__PURE__ */ React.createElement("dd", null, c.profession || "—"), /* @__PURE__ */ React.createElement("dt", null, "Designation"), /* @__PURE__ */ React.createElement("dd", null, c.designation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Registered"), /* @__PURE__ */ React.createElement("dd", null, c.registration_date ? fmtDate(c.registration_date) : "—"), /* @__PURE__ */ React.createElement("dt", null, "Remarks"), /* @__PURE__ */ React.createElement("dd", null, c.remarks || "—"))), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nom ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nom.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nom.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", null, nom.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nom.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nom.address || "—")), /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 12 } }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit nominee"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archiveNom }, "Archive nominee"))) : /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "No nominee recorded", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("customer", { customer: c }) }, "Add nominee") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("customers") }, "All customers")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("h1", { style: { fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 } }, c.full_name), /* @__PURE__ */ React.createElement(Status, { v: c.status })), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono" + (fu.customer[c.id] ? " fu-id" : "") }, c.code), fu.customer[c.id] && /* @__PURE__ */ React.createElement(FuPill, null), c.phone ? " · " : "", /* @__PURE__ */ React.createElement("span", { className: "num" }, c.phone), c.profession ? " · " + c.profession : "", c.designation ? ", " + c.designation : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archive }, "Archive Customer & Related Records")))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total construction contribution", value: fmtMoney(cs.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(cs.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: cs.due > 4e-3 ? "due" : void 0, value: fmtMoney(cs.due) })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement(Tabs, { tabs, value: tab, onChange: setTab }), tab === "plans" && /* @__PURE__ */ React.createElement(DataTable, { cols: planCols, rows: cs.plans, pageSize: 10, onRowClick: (x) => go("construction", { planId: x.p.id }), empty: { title: "No construction plan yet", text: "Create a plan to set the total this customer will pay. A unit is not needed now.", icon: "wrench", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan") } }), tab === "payments" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(LedgerTable, { rows: ledger, showWho: false, pageSize: 10, empty: { title: "No payments yet", text: "Construction payments for this customer will appear here.", icon: "card" } })), tab === "overview" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Email"), /* @__PURE__ */ React.createElement("dd", null, c.email || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, c.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, c.address || "—"), /* @__PURE__ */ React.createElement("dt", null, "Profession"), /* @__PURE__ */ React.createElement("dd", null, c.profession || "—"), /* @__PURE__ */ React.createElement("dt", null, "Designation"), /* @__PURE__ */ React.createElement("dd", null, c.designation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Registered"), /* @__PURE__ */ React.createElement("dd", null, c.registration_date ? fmtDate(c.registration_date) : "—"), /* @__PURE__ */ React.createElement("dt", null, "Remarks"), /* @__PURE__ */ React.createElement("dd", null, c.remarks || "—"))), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nom ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nom.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nom.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", null, nom.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nom.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nom.address || "—")), /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 12 } }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit nominee"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archiveNom }, "Archive nominee"))) : /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "No nominee recorded", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("customer", { customer: c }) }, "Add nominee") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
   }
   function SalesPage({ newBooking }) {
     const { db, user, go, open, confirm, run, S } = useApp();
@@ -5428,7 +5531,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   function LoadingShell() {
     return /* @__PURE__ */ React.createElement("div", { className: "shell" }, /* @__PURE__ */ React.createElement("aside", { className: "side" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, APP_CONFIG.companyName), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName)), NAV.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, className: "skel", style: { height: 34, margin: "3px 4px" } }))), /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { className: "top" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 36, width: 260 } })), /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 40, width: 220 } }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "skel", style: { height: 88 } }))), /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 280 } }), /* @__PURE__ */ React.createElement("span", { className: "sr", role: "status" }, "Loading project data"))));
   }
-  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planUnit: "write", customer: "write", customerPlan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
+  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planUnit: "write", customerArchive: "archive", customer: "write", customerPlan: "write", planTotal: "approve", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
   function App({ repo: repoProp, auth }) {
     const repoRef = useRef(null);
     if (!repoRef.current) repoRef.current = repoProp || createRepository();
