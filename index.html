@@ -4945,10 +4945,51 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       await run(() => S.updateSettings({ total_shares: ts, default_share_price: Number(f.default_share_price), share_name: f.share_name.trim(), share_remarks: f.share_remarks.trim() }), "Share configuration saved");
       setBusy2(false);
     };
+    const CASCADE_KEYS = ["plans", "units_released", "documents", "nominees", "payments"];
+    const isCascadeAudit = (a, id) => {
+      if (a.entity_type !== "customer" || a.entity_id !== id || a.action !== "Archived record") return false;
+      let af = a.after;
+      if (typeof af === "string") {
+        try {
+          af = JSON.parse(af);
+        } catch (e) {
+          return false;
+        }
+      }
+      return !!af && typeof af === "object" && CASCADE_KEYS.every((k) => Object.prototype.hasOwnProperty.call(af, k));
+    };
+    const cascadeCust = /* @__PURE__ */ new Set(), cascadeIds = /* @__PURE__ */ new Set();
+    (db.customers || []).forEach((c) => {
+      if (!c.archived_at) return;
+      const rows = (db.audit_logs || []).filter((a) => isCascadeAudit(a, c.id));
+      if (rows.length || (db.construction_plans || []).some((p) => p.customer_id === c.id && p.archived_at && String(p.archived_at) === String(c.archived_at))) {
+        cascadeCust.add(c.id);
+        rows.forEach((a) => {
+          let af = a.after;
+          if (typeof af === "string") {
+            try {
+              af = JSON.parse(af);
+            } catch (e) {
+              af = null;
+            }
+          }
+          ["nominees", "documents"].forEach((k) => {
+            if (af && Array.isArray(af[k])) af[k].forEach((x) => cascadeIds.add(String(x)));
+          });
+        });
+      }
+    });
+    const custArchAt = (id) => {
+      const c = (db.customers || []).find((x) => x.id === id);
+      return c ? String(c.archived_at) : null;
+    };
+    const docOwner = (d) => d.customer_id || ((db.customer_nominees || []).find((n) => n.id === d.customer_nominee_id) || {}).customer_id || ((db.construction_payments || []).find((y) => y.id === d.construction_payment_id) || {}).customer_id || null;
+    const sameMoment = (r, cid) => !!cid && cascadeCust.has(cid) && !!r.archived_at && String(r.archived_at) === custArchAt(cid);
+    const hiddenHistory = (t, r) => t === "customers" && cascadeCust.has(r.id) || t === "construction_plans" && !!r.customer_id && cascadeCust.has(r.customer_id) || t === "customer_nominees" && (cascadeIds.has(String(r.id)) || sameMoment(r, r.customer_id)) || t === "documents" && (cascadeIds.has(String(r.id)) || sameMoment(r, docOwner(r)));
     const archived = [];
     PK_TABLES.forEach((t) => {
       (db[t] || []).forEach((r) => {
-        if (r.archived_at) archived.push({ id: t + r.id, rid: r.id, superseded: !!r._superseded, table: t, label: r.code || r.name || r.full_name || r.id, at: r.archived_at, by: userName(db, r.archived_by), reason: r.archive_reason || "—" });
+        if (r.archived_at && !hiddenHistory(t, r)) archived.push({ id: t + r.id, rid: r.id, superseded: !!r._superseded, table: t, label: r.code || r.name || r.full_name || r.id, at: r.archived_at, by: userName(db, r.archived_by), reason: r.archive_reason || "—" });
       });
     });
     const canRestore = !!(S.restoreRecord && auth && can(user, "restore"));
