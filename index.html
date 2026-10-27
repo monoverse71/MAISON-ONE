@@ -501,7 +501,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     /* initial only. The live price is edited in Settings > Share Configuration. */
   };
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const METHODS = ["Account Transfer", "Bank Transfer", "BEFTN", "RTGS", "Cheque", "NPSB", "Mobile Banking", "bKash", "Nagad", "Rocket", "Upay", "Others"];
+  const METHODS = ["Cash", "Account Transfer", "Bank Transfer", "BEFTN", "RTGS", "Cheque", "NPSB", "Mobile Banking", "bKash", "Nagad", "Rocket", "Upay", "Others"];
   function methodLabel(r) {
     if (!r || !r.method) return "—";
     return r.method === "Others" && r.method_details ? "Others: " + r.method_details : r.method;
