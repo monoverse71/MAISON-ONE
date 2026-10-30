@@ -375,14 +375,6 @@ textarea.inp{min-height:68px;resize:vertical}
 .dimg-row{display:flex;gap:10px;flex-wrap:wrap}.dimg-row .dimg{width:40mm}
 
 /* ---------- Shareholder 360 summary / dashboard summary: compact single-page layout ---------- */
-.doc.p360{font-size:8.5pt}.doc.p360 .doc-fit{gap:6px}
-.doc.p360 .dsec h3{margin-bottom:3px;padding-bottom:2px;font-size:8pt}
-.doc.p360 .dt{font-size:8pt}.doc.p360 .dt th{font-size:7.5pt;padding:3px 5px}.doc.p360 .dt td{padding:2.5px 5px}
-.doc.p360 .kv{gap:2px 14px}.doc.p360 .kv dt{font-size:7.5pt;min-width:18mm}
-.doc.p360 .dnote{font-size:7.5pt;margin:2px 0}
-.doc.p360 .dbox-row{gap:5px;margin-bottom:3px}.doc.p360 .dbox{padding:4px 7px}.doc.p360 .dbox b{font-size:10pt}.doc.p360 .dbox span,.doc.p360 .dbox small{font-size:7pt}
-.doc.p360 h2.prof-name{font-size:13pt;margin:0 0 3px}
-.doc.p360 .sigs{margin-top:5mm;gap:10mm}.doc.p360 .sigs span{font-size:8pt}
 .p3-row{display:flex;gap:10px;align-items:flex-start}.p3-main{flex:1;min-width:0}.p3-ids{display:flex;gap:6px;flex:none}
 .doc.p360 .dimg{width:25mm;gap:2px}.doc.p360 .dimg img,.doc.p360 .dimg-none{aspect-ratio:4/3;object-fit:contain;background:#F9FAFB}
 .doc.p360 .p3-row>.dimg{width:19mm}.doc.p360 .p3-row>.dimg img,.doc.p360 .p3-row>.dimg-none{aspect-ratio:3/4;object-fit:cover}
@@ -472,6 +464,68 @@ tr.row-fu > td{background:var(--bad-bg)}
 .deed-sign>div{display:flex;flex-direction:column;gap:2px}.deed-sign span{color:#4B5563;font-size:8.5pt}.deed-line{border-top:1px solid #1F2937;margin-bottom:2px}
 .deed-wit{margin-top:7mm}
 
+
+/* ---------- Adaptive A4 layout (Phase 1b): four fixed density modes. Normal (N) is the layout the app always had. ---------- */
+.pg-measure{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none}
+.pa{break-inside:avoid;min-width:0}
+.doc-head.cont{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding-bottom:5px;border-bottom:1.5px solid #6B21A8;font-size:8.5pt;color:#4B5563}
+.doc-foot .doc-pg{margin-left:auto;font-weight:600}
+.dt[style*="table-layout"] th,.dt[style*="table-layout"] td{overflow-wrap:anywhere}
+.pl-ph{width:8mm;height:8mm;border-radius:50%;object-fit:cover;display:inline-grid;place-items:center;vertical-align:middle;background:#EDE9FE;color:#5B21B6;font-weight:600;font-size:8pt}
+.paper{background:transparent;box-shadow:none}
+.paper .doc{box-shadow:0 4px 24px rgba(0,0,0,.35);margin:0 0 18px}
+.paper .doc:last-child{margin-bottom:0}
+/* R: roomy, for short documents */
+.doc[data-d="R"]{font-size:10.5pt;padding:12mm 13mm 10mm}.doc.land[data-d="R"]{padding:10mm 12mm 8mm}
+.doc[data-d="R"] .doc-fit{gap:14px}
+.doc[data-d="R"] .dsec h3{font-size:9pt;margin-bottom:6px;padding-bottom:3px}
+.doc[data-d="R"] .dt{font-size:10pt}.doc[data-d="R"] .dt th{font-size:9pt;padding:6px 7px}.doc[data-d="R"] .dt td{padding:6px 7px}
+.doc[data-d="R"] .kv{gap:8px 20px}.doc[data-d="R"] .kv dt{font-size:9.5pt}
+.doc[data-d="R"] .dnote{font-size:9pt;margin:3px 0}.doc[data-d="R"] .dmeta{font-size:9pt}
+.doc[data-d="R"] .dbox{padding:9px 11px}.doc[data-d="R"] .dbox b{font-size:13pt}.doc[data-d="R"] .dbox span,.doc[data-d="R"] .dbox small{font-size:8.5pt}
+.doc[data-d="R"] .dtot>div{padding:4px 0}.doc[data-d="R"] .words{padding:8px 11px}
+.doc[data-d="R"] .sigs{margin-top:18mm}.doc[data-d="R"] .sigs span{font-size:9.5pt}
+.doc[data-d="R"] h2.prof-name{font-size:18pt}
+.doc[data-d="R"] .dimg{width:36mm}.doc[data-d="R"] .prof-top .dimg{width:31mm}.doc[data-d="R"] .dimg-row .dimg{width:44mm}
+.doc[data-d="R"] .doc-foot{font-size:8.5pt}
+/* C: compact */
+.doc[data-d="C"]{font-size:9pt;padding:9mm 11mm 8mm}.doc.land[data-d="C"]{padding:7mm 10mm 6mm}
+.doc[data-d="C"] .doc-head{padding-bottom:6px}.doc[data-d="C"] .doc-logo{height:12mm}.doc[data-d="C"] .doc-co{font-size:14pt}.doc[data-d="C"] .doc-title{font-size:13pt}
+.doc[data-d="C"] .doc-fit{gap:7px}
+.doc[data-d="C"] .dsec h3{font-size:8pt;margin-bottom:3px;padding-bottom:2px}
+.doc[data-d="C"] .dt{font-size:8.5pt}.doc[data-d="C"] .dt th{font-size:8pt;padding:3.5px 5px}.doc[data-d="C"] .dt td{padding:2.8px 5px}
+.doc[data-d="C"] .kv{gap:3px 14px}.doc[data-d="C"] .kv dt{font-size:8pt;min-width:22mm}
+.doc[data-d="C"] .dnote{font-size:8pt;margin:2px 0}.doc[data-d="C"] .dmeta{font-size:8pt}
+.doc[data-d="C"] .dbox-row{gap:6px;margin-bottom:4px}.doc[data-d="C"] .dbox{padding:5px 8px}.doc[data-d="C"] .dbox b{font-size:10.5pt}.doc[data-d="C"] .dbox span,.doc[data-d="C"] .dbox small{font-size:7.5pt}
+.doc[data-d="C"] .dtot>div{padding:2px 0}.doc[data-d="C"] .words{padding:4px 8px;margin-top:4px}
+.doc[data-d="C"] .sigs{margin-top:9mm;gap:10mm}.doc[data-d="C"] .sigs span{font-size:8.5pt}
+.doc[data-d="C"] h2.prof-name{font-size:14pt;margin-bottom:3px}
+.doc[data-d="C"] .dimg{width:28mm}.doc[data-d="C"] .prof-top .dimg{width:26mm}.doc[data-d="C"] .dimg-row .dimg{width:34mm}
+.doc[data-d="C"] .pl-ph{width:6.5mm;height:6.5mm}
+/* T: tight, the smallest mode (body 8pt, tables 7.5pt). Used only when a one-page document needs it. */
+.doc[data-d="T"]{font-size:8pt;padding:8mm 10mm 7mm}.doc.land[data-d="T"]{padding:6mm 9mm 5mm}
+.doc[data-d="T"] .doc-head{padding-bottom:4px}.doc[data-d="T"] .doc-logo{height:10mm}.doc[data-d="T"] .doc-co{font-size:12pt}.doc[data-d="T"] .doc-title{font-size:11.5pt}.doc[data-d="T"] .doc-proj,.doc[data-d="T"] .doc-id{font-size:8pt}
+.doc[data-d="T"] .doc-fit{gap:5px}
+.doc[data-d="T"] .dsec h3{font-size:7.5pt;margin-bottom:2px;padding-bottom:1px}
+.doc[data-d="T"] .dt{font-size:7.5pt}.doc[data-d="T"] .dt th{font-size:7pt;padding:2px 4px}.doc[data-d="T"] .dt td{padding:1.8px 4px}
+.doc[data-d="T"] .kv{gap:2px 12px}.doc[data-d="T"] .kv dt{font-size:7pt;min-width:18mm}
+.doc[data-d="T"] .dnote{font-size:7.2pt;margin:1px 0}.doc[data-d="T"] .dmeta{font-size:7.2pt}
+.doc[data-d="T"] .dbox-row{gap:4px;margin-bottom:2px}.doc[data-d="T"] .dbox{padding:3px 6px}.doc[data-d="T"] .dbox b{font-size:9.5pt}.doc[data-d="T"] .dbox span,.doc[data-d="T"] .dbox small{font-size:6.8pt}
+.doc[data-d="T"] .dtot>div{padding:1px 0}.doc[data-d="T"] .words{padding:3px 7px;margin-top:3px}
+.doc[data-d="T"] .sigs{margin-top:6mm;gap:8mm}.doc[data-d="T"] .sigs span{font-size:8pt}
+.doc[data-d="T"] h2.prof-name{font-size:12pt;margin-bottom:2px}
+.doc[data-d="T"] .dimg{width:22mm}.doc[data-d="T"] .prof-top .dimg{width:20mm}.doc[data-d="T"] .dimg-row .dimg{width:28mm}
+.doc[data-d="T"] .pl-ph{width:5.5mm;height:5.5mm}.doc[data-d="T"] .doc-foot{font-size:7pt;padding-top:3px}
+/* 360 summary pictures follow the mode */
+.doc.p360[data-d="R"] .dimg{width:30mm}.doc.p360[data-d="R"] .p3-row>.dimg{width:22mm}
+.doc.p360[data-d="C"] .dimg{width:25mm}.doc.p360[data-d="C"] .p3-row>.dimg{width:19mm}
+.doc.p360[data-d="T"] .dimg{width:21mm}.doc.p360[data-d="T"] .p3-row>.dimg{width:16mm}
+.doc.p360[data-d="R"] .dimg figcaption,.doc.p360[data-d="N"] .dimg figcaption{font-size:7.5pt}
+@media print{
+  .pg-measure{display:none!important}
+  .print-copy .doc{break-after:page;page-break-after:always}
+  .print-copy .doc:last-child{break-after:auto;page-break-after:auto}
+}
 </style>
 <div id="root"></div>
 <div id="print-root"></div>
@@ -3477,8 +3531,11 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       i.onClick();
     } }, i.icon && /* @__PURE__ */ React.createElement(Icon, { n: i.icon, size: 15 }), i.label))));
   }
-  function DataTable({ cols, rows, rowKey, onRowClick, empty, pageSize = 10, foot, rowClass, initialSort, summary }) {
+  function DataTable({ cols, rows, rowKey, onRowClick, empty, pageSize = 10, foot, rowClass, initialSort, summary, onSort }) {
     const [sort, setSort] = useState(initialSort || null);
+    useEffect(() => {
+      if (onSort) onSort(sort);
+    }, [sort]);
     const [page, setPage] = useState(0);
     useEffect(() => {
       setPage(0);
@@ -4609,6 +4666,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const fu = useFollowupToday();
     const [q, setQ] = useState("");
     const [flt, setFlt] = useState("all");
+    const [shSort, setShSort] = useState(null);
     const all = useMemo(() => db.shareholders.filter(live).map((s) => {
       const c = Calc.shareholder(db, s);
       return { id: s.id, s, c, code: s.code, name: s.full_name, phone: s.phone, shares: c.shares, value: c.shareValue, paid: c.sharePaid, due: c.shareDue, cpaid: c.consPaid, cdue: c.consDue, status: s.status };
@@ -4652,7 +4710,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         { label: "Archive", icon: "archive", danger: true, hidden: !can(user, "archiveShareholder"), onClick: () => archive(r) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Shareholders", sub: "Every person who holds land shares in the project, with land share and construction money kept apart.", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder") }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 10, rowClass: (r) => fu.shareholder[r.id] ? "row-fu" : "", onRowClick: (r) => go("profile", { id: r.id }), empty: { title: q || flt !== "all" ? "No shareholders match" : "No shareholders yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add the first shareholder to get started.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder") : null } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Shareholders", sub: "Every person who holds land shares in the project, with land share and construction money kept apart.", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "shList", args: { ids: rows.map((r) => r.id), sort: shSort, flt, q: q.trim() } }) }, "Print List"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder")) }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, onSort: setShSort, pageSize: 10, rowClass: (r) => fu.shareholder[r.id] ? "row-fu" : "", onRowClick: (r) => go("profile", { id: r.id }), empty: { title: q || flt !== "all" ? "No shareholders match" : "No shareholders yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add the first shareholder to get started.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder") : null } })));
   }
   function ProfilePage({ id, tab: tab0 }) {
     const { db, user, go, open } = useApp();
@@ -5237,18 +5295,196 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     }, []);
     return { doc, body, fit, scale };
   }
-  function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
-    const st2 = ctx.db.settings[0];
-    const fp = useFitOnePage([children]);
-    useEffect(() => {
-      window.dispatchEvent(new CustomEvent("docfit", { detail: fp.scale }));
-    }, [fp.scale]);
-    return /* @__PURE__ */ React.createElement("article", { className: "doc" + (landscape ? " land" : "") + (cls ? " " + cls : ""), ref: fp.doc, "data-fit": fp.scale }, /* @__PURE__ */ React.createElement("header", { className: "doc-head" }, /* @__PURE__ */ React.createElement("div", { className: "doc-brand" }, /* @__PURE__ */ React.createElement("img", { className: "doc-logo", src: BRAND_LOGO.url, alt: "Apon Niketon Holdings logo" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "doc-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "doc-proj" }, st2.project_name))), /* @__PURE__ */ React.createElement("div", { className: "doc-id" }, /* @__PURE__ */ React.createElement("div", { className: "doc-title" }, title), docNo && /* @__PURE__ */ React.createElement("div", null, "No. ", /* @__PURE__ */ React.createElement("b", { className: "mono" }, docNo)), /* @__PURE__ */ React.createElement("div", null, "Date: ", /* @__PURE__ */ React.createElement("b", null, fmtDate(date || TODAY))))), /* @__PURE__ */ React.createElement("div", { className: "doc-body", ref: fp.body }, /* @__PURE__ */ React.createElement("div", { className: "doc-fit", ref: fp.fit }, children)), /* @__PURE__ */ React.createElement("footer", { className: "doc-foot" }, /* @__PURE__ */ React.createElement("span", null, st2.company_name, " · ", title, docNo ? " · " + docNo : ""), /* @__PURE__ */ React.createElement("span", null, "Printed ", fmtDate(TODAY), " by ", ctx.user.name), note && /* @__PURE__ */ React.createElement("span", { className: "doc-note" }, note)));
+const DENS_LABEL = { R: "Roomy", N: "Normal", C: "Compact", T: "Tight" };
+const flatAtoms = (children) => {
+  const out = [];
+  React.Children.toArray(children).forEach((ch) => {
+    if (ch && ch.type === React.Fragment) flatAtoms(ch.props.children).forEach((x) => out.push(x));
+    else if (ch != null && ch !== false && ch !== true && ch !== "") out.push(ch);
+  });
+  return out;
+};
+const isStampAtom = (el) => !!(el && el.props && typeof el.props.className === "string" && /\bstamp\b/.test(el.props.className));
+function splitInfo(el) {
+  if (!el || el.type !== Sect) return null;
+  const kids = React.Children.toArray(el.props.children);
+  let idx = -1, best = 0;
+  kids.forEach((k, i) => {
+    if (k && k.type === DT && k.props.rows && k.props.rows.length > best) {
+      best = k.props.rows.length;
+      idx = i;
+    }
+  });
+  return idx < 0 ? null : { kids, idx, n: best };
+}
+function paginateAtoms(m, H1, Hc, gap, slack) {
+  const pages = [[]];
+  let used = 0, real = 0;
+  const cap = () => (pages.length === 1 ? H1 : Hc) - slack;
+  const room = () => cap() - used - (real ? gap : 0);
+  const newPage = () => {
+    pages.push([]);
+    used = 0;
+    real = 0;
+  };
+  const put = (item, h) => {
+    pages[pages.length - 1].push(item);
+    used += h + (real ? gap : 0);
+    real++;
+  };
+  let lastSplit = -1;
+  m.forEach((a, i) => {
+    if (a.split) lastSplit = i;
+  });
+  let tail = 0;
+  if (lastSplit >= 0) {
+    for (let j = lastSplit + 1; j < m.length; j++) if (!m[j].abs) tail += m[j].h + gap;
+    if (tail > 0.35 * Hc) tail = 0;
   }
+  m.forEach((a, i) => {
+    if (a.abs) {
+      pages[pages.length - 1].push({ i, abs: true });
+      return;
+    }
+    if (a.h <= room() && !(i === lastSplit && tail > 0 && a.h + gap + tail > room())) {
+      put({ i }, a.h);
+      return;
+    }
+    if (a.split) {
+      const s = a.split, n = s.rows.length;
+      let r = 0;
+      while (r < n) {
+        const firstChunk = r === 0, headH = firstChunk ? s.topH : s.titleH + s.theadH, avail = room();
+        let h = headH, k = r;
+        while (k < n) {
+          const extra = k === n - 1 ? s.afterH + (i === lastSplit ? tail : 0) : 0;
+          if (h + s.rows[k] + extra <= avail) {
+            h += s.rows[k];
+            k++;
+          } else break;
+        }
+        const need = Math.min(firstChunk ? 3 : 1, n - r);
+        if (k - r < need) {
+          if (real) {
+            newPage();
+            continue;
+          }
+          k = r + 1;
+          h = headH + s.rows[r];
+        }
+        if (k === n) h += s.afterH;
+        put({ i, from: r, to: k, last: k === n, first: firstChunk }, h);
+        r = k;
+        if (r < n) newPage();
+      }
+      return;
+    }
+    if (real) newPage();
+    put({ i }, a.h);
+  });
+  return pages;
+}
+function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
+  const st2 = ctx.db.settings[0];
+  const atoms = flatAtoms(children);
+  const mRoot = useRef(null), pageEls = useRef([]), A = useRef(atoms), keyRef = useRef(""), slackRef = useRef(3);
+  A.current = atoms;
+  const [plan, setPlan] = useState(null);
+  const compute = useCallback(() => {
+    const root2 = mRoot.current;
+    if (!root2) return;
+    const arts = root2.querySelectorAll("article"), first = arts[0], cont = arts[1], at = A.current, fitEl = first.querySelector(".doc-fit");
+    const multi = at.some((a) => {
+      const s = splitInfo(a);
+      return s && s.n >= 15;
+    });
+    let best = null;
+    (multi ? ["R", "N", "C"] : ["R", "N", "C", "T"]).forEach((d2) => {
+      arts.forEach((a) => a.setAttribute("data-d", d2));
+      const H1 = first.querySelector(".doc-body").getBoundingClientRect().height, Hc = cont.querySelector(".doc-body").getBoundingClientRect().height;
+      const gap = parseFloat(getComputedStyle(fitEl).rowGap) || 0, widths = {};
+      const m = at.map((a, i) => {
+        const w = fitEl.querySelector(':scope > [data-i="' + i + '"]');
+        if (!w) return { abs: true };
+        const r = w.getBoundingClientRect(), o = { h: r.height }, inf = splitInfo(a);
+        if (inf) {
+          const tbs = [...w.querySelectorAll("table.dt")];
+          let tb = null, bn = -1;
+          tbs.forEach((t) => {
+            const c = t.tBodies[0] ? t.tBodies[0].rows.length : 0;
+            if (c > bn) {
+              bn = c;
+              tb = t;
+            }
+          });
+          if (tb && bn === inf.n && tb.tHead) {
+            const rs = [...tb.tBodies[0].rows], th = tb.tHead.getBoundingClientRect(), h3 = w.querySelector("h3"), h3r = h3 ? h3.getBoundingClientRect() : null;
+            const rects = rs.map((x) => x.getBoundingClientRect());
+            o.split = { rows: rects.map((x, k) => (k < rects.length - 1 ? rects[k + 1].top : x.bottom) - x.top), topH: th.bottom - r.top, theadH: th.height, titleH: h3r ? h3r.bottom - r.top + (parseFloat(getComputedStyle(h3).marginBottom) || 0) : 0, afterH: r.bottom - rects[rects.length - 1].bottom };
+            const tw = tb.getBoundingClientRect().width || 1;
+            widths[i] = [...tb.tHead.rows[0].cells].map((c) => c.getBoundingClientRect().width / tw * 100);
+          }
+        }
+        return o;
+      });
+      const pages2 = paginateAtoms(m, H1, Hc, gap, slackRef.current);
+      if (!best || pages2.length < best.pages.length) best = { d: d2, pages: pages2, widths };
+    });
+    const key = best.d + "|" + slackRef.current + "|" + JSON.stringify(best.pages);
+    if (key !== keyRef.current) {
+      keyRef.current = key;
+      setPlan(best);
+    }
+  }, []);
+  useLayoutEffect(() => {
+    slackRef.current = 3;
+    compute();
+  }, [children]);
+  useLayoutEffect(() => {
+    if (!plan) return;
+    const bad = pageEls.current.some((el) => el && el.querySelector(".doc-fit").getBoundingClientRect().height > el.querySelector(".doc-body").getBoundingClientRect().height + 0.6);
+    if (bad && slackRef.current < 40) {
+      slackRef.current += 8;
+      compute();
+    }
+  }, [plan]);
+  useEffect(() => {
+    const again = () => compute();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(again);
+    const t = setTimeout(again, 400), t2 = setTimeout(again, 1500);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("docfit", { detail: 1 }));
+    window.dispatchEvent(new CustomEvent("docplan", { detail: plan ? { pages: plan.pages.length, d: plan.d } : null }));
+  }, [plan && plan.pages.length, plan && plan.d]);
+  const cl = "doc" + (landscape ? " land" : "") + (cls ? " " + cls : "");
+  const head = (cont) => cont ? /* @__PURE__ */ React.createElement("header", { className: "doc-head cont" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, st2.company_name), " · ", st2.project_name), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, title), docNo ? " · " + docNo : "", " (continued)")) : /* @__PURE__ */ React.createElement("header", { className: "doc-head" }, /* @__PURE__ */ React.createElement("div", { className: "doc-brand" }, /* @__PURE__ */ React.createElement("img", { className: "doc-logo", src: BRAND_LOGO.url, alt: "Apon Niketon Holdings logo" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "doc-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "doc-proj" }, st2.project_name))), /* @__PURE__ */ React.createElement("div", { className: "doc-id" }, /* @__PURE__ */ React.createElement("div", { className: "doc-title" }, title), docNo && /* @__PURE__ */ React.createElement("div", null, "No. ", /* @__PURE__ */ React.createElement("b", { className: "mono" }, docNo)), /* @__PURE__ */ React.createElement("div", null, "Date: ", /* @__PURE__ */ React.createElement("b", null, fmtDate(date || TODAY)))));
+  const foot = (pi, n) => /* @__PURE__ */ React.createElement("footer", { className: "doc-foot" }, /* @__PURE__ */ React.createElement("span", null, st2.company_name, " · ", title, docNo ? " · " + docNo : ""), /* @__PURE__ */ React.createElement("span", null, "Printed ", fmtDate(TODAY), " by ", ctx.user.name), note && /* @__PURE__ */ React.createElement("span", { className: "doc-note" }, note), n > 1 && /* @__PURE__ */ React.createElement("span", { className: "doc-pg" }, "Page ", pi + 1, " of ", n));
+  const wrapAtom = (a, i) => isStampAtom(a) ? React.cloneElement(a, { key: i }) : /* @__PURE__ */ React.createElement("div", { key: i, className: "pa", "data-i": i }, a);
+  const itemEl = (it) => {
+    const a = atoms[it.i];
+    if (it.abs) return React.cloneElement(a, { key: "a" + it.i });
+    if (it.from == null) return /* @__PURE__ */ React.createElement("div", { key: it.i, className: "pa", "data-i": it.i }, a);
+    const inf = splitInfo(a), dt = inf.kids[inf.idx], w = plan.widths[it.i];
+    const nd = React.cloneElement(dt, { rows: dt.props.rows.slice(it.from, it.to), foot: it.last ? dt.props.foot : null, widths: w || null });
+    const kids = (it.first ? inf.kids.slice(0, inf.idx) : []).concat([nd]).concat(it.last ? inf.kids.slice(inf.idx + 1) : []);
+    return /* @__PURE__ */ React.createElement("div", { key: it.i + "-" + it.from, className: "pa", "data-i": it.i }, React.cloneElement(a, { title: a.props.title + (it.first ? "" : " (continued)") }, kids));
+  };
+  const pages = plan ? plan.pages : [atoms.map((a, i) => ({ i, abs: isStampAtom(a) }))];
+  const d = plan ? plan.d : "N", root = document.getElementById("print-root");
+  pageEls.current = [];
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, root && ReactDOM.createPortal(/* @__PURE__ */ React.createElement("div", { className: "pg-measure", ref: mRoot, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("article", { className: cl, "data-d": "N" }, head(false), /* @__PURE__ */ React.createElement("div", { className: "doc-body" }, /* @__PURE__ */ React.createElement("div", { className: "doc-fit" }, atoms.map(wrapAtom))), foot(0, 1)), /* @__PURE__ */ React.createElement("article", { className: cl + " cont", "data-d": "N" }, head(true), /* @__PURE__ */ React.createElement("div", { className: "doc-body" }, /* @__PURE__ */ React.createElement("div", { className: "doc-fit" })), foot(1, 2))), root), pages.map((items, pi) => /* @__PURE__ */ React.createElement("article", { key: pi, className: cl, "data-d": d, "data-page": pi + 1, "data-pages": pages.length, ref: (el) => {
+    pageEls.current[pi] = el;
+  } }, head(pi > 0), /* @__PURE__ */ React.createElement("div", { className: "doc-body" }, /* @__PURE__ */ React.createElement("div", { className: "doc-fit" }, items.map(itemEl))), foot(pi, pages.length))));
+}
   const boldMoney = (v) => typeof v === "string" && /^-?৳/.test(v) ? /* @__PURE__ */ React.createElement("span", { className: "m-b" }, v) : v;
-  function DT({ cols, rows, foot, empty }) {
+  function DT({ cols, rows, foot, empty, widths }) {
     const cc = cols.map((c, i) => ({ c, i })).filter((x) => x.c);
-    return /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, cc.map((x, i) => /* @__PURE__ */ React.createElement("th", { key: i, className: x.c.r ? "r" : "", style: x.c.w ? { width: x.c.w } : void 0 }, x.c.l)))), /* @__PURE__ */ React.createElement("tbody", null, rows.length ? rows.map((r, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: r._cls || "" }, cc.map((x, j) => /* @__PURE__ */ React.createElement("td", { key: j, className: x.c.r ? "r" : "" }, boldMoney(x.c.f ? x.c.f(r, i) : r[x.c.k]))))) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: cc.length, className: "dt-empty" }, empty || "No records."))), foot && /* @__PURE__ */ React.createElement("tfoot", null, /* @__PURE__ */ React.createElement("tr", null, cc.map((x, j) => {
+    return /* @__PURE__ */ React.createElement("table", { className: "dt", style: widths && widths.length === cc.length ? { tableLayout: "fixed" } : void 0 }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, cc.map((x, i) => /* @__PURE__ */ React.createElement("th", { key: i, className: x.c.r ? "r" : "", style: widths && widths.length === cc.length ? { width: widths[i] + "%" } : x.c.w ? { width: x.c.w } : void 0 }, x.c.l)))), /* @__PURE__ */ React.createElement("tbody", null, rows.length ? rows.map((r, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: r._cls || "" }, cc.map((x, j) => /* @__PURE__ */ React.createElement("td", { key: j, className: x.c.r ? "r" : "" }, boldMoney(x.c.f ? x.c.f(r, i) : r[x.c.k]))))) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: cc.length, className: "dt-empty" }, empty || "No records."))), foot && /* @__PURE__ */ React.createElement("tfoot", null, /* @__PURE__ */ React.createElement("tr", null, cc.map((x, j) => {
       const v = foot[x.c.k != null ? x.c.k : x.i];
       return /* @__PURE__ */ React.createElement("td", { key: j, className: x.c.r ? "r" : "" }, v != null ? boldMoney(v) : "");
     }))));
@@ -5594,7 +5830,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const def = PRINT_DOCS[doc];
     const tok = useRef({});
     const wrap = useRef(null);
-    const [opts, setOpts] = useState({ showBooking: false, showShareholder: false });
+    const [opts, setOpts] = useState({ showBooking: false, showShareholder: false, showPhotos: false });
+    const [info, setInfo] = useState(null);
     const [fitScale, setFitScale] = useState(1);
     const [scale, setScale] = useState(1);
     const [blocked, setBlocked] = useState(false);
@@ -5626,7 +5863,12 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     useEffect(() => {
       const h = (e) => setFitScale(e.detail);
       window.addEventListener("docfit", h);
-      return () => window.removeEventListener("docfit", h);
+      const h2 = (e) => setInfo(e.detail);
+      window.addEventListener("docplan", h2);
+      return () => {
+        window.removeEventListener("docfit", h);
+        window.removeEventListener("docplan", h2);
+      };
     }, []);
     const root = document.getElementById("print-root");
     useEffect(() => {
@@ -5660,8 +5902,58 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         document.title = prev;
       };
     }, [title]);
-    return /* @__PURE__ */ React.createElement("div", { className: "pv", role: "dialog", "aria-modal": "true", "aria-label": "Print preview: " + title }, /* @__PURE__ */ React.createElement("div", { className: "pv-bar" }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("b", null, title), /* @__PURE__ */ React.createElement("span", { className: "pv-sub" }, "A4 ", landscape ? "landscape" : "portrait", " · exactly one page", fitScale < 0.995 ? " · scaled to " + Math.round(fitScale * 100) + "% to fit" : "", fitScale < 0.6 ? " · dense page: text is small, consider a section print instead" : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, hasIds && /* @__PURE__ */ React.createElement("span", { className: "pv-opts", role: "group", "aria-label": "Print options" }, /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "po-booking", checked: opts.showBooking, onChange: (e) => setOpts({ ...opts, showBooking: e.target.checked }) }), " Show Booking Number"), /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "po-shareholder", checked: opts.showShareholder, onChange: (e) => setOpts({ ...opts, showShareholder: e.target.checked }) }), " Show Shareholder Number")), /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => setZoomMode(zoomMode === "fit" ? "full" : "fit") }, zoomMode === "fit" ? "Actual size" : "Fit to screen"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "printer", onClick: doPrint }, "Print A4"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "x", onClick: onClose }, "Close"))), blocked && /* @__PURE__ */ React.createElement("div", { className: "pv-note", role: "status" }, /* @__PURE__ */ React.createElement("b", null, "Printing did not open."), " This preview may be embedded in a page that blocks the print dialog. Open the app in its own browser tab, then choose Print A4 (or press Ctrl/Cmd+P) to print or save as PDF. The layout shown here is the layout that will print."), /* @__PURE__ */ React.createElement("div", { className: "pv-scroll", ref: wrap }, /* @__PURE__ */ React.createElement("div", { className: "paper-outer", style: { width: pw * scale } }, /* @__PURE__ */ React.createElement("div", { className: "paper" + (landscape ? " land" : ""), style: { zoom: scale, width: pw } }, el))), root && ReactDOM.createPortal(/* @__PURE__ */ React.createElement("div", { className: "print-copy", "data-orient": landscape ? "landscape" : "portrait" }, el), root));
+    return /* @__PURE__ */ React.createElement("div", { className: "pv", role: "dialog", "aria-modal": "true", "aria-label": "Print preview: " + title }, /* @__PURE__ */ React.createElement("div", { className: "pv-bar" }, /* @__PURE__ */ React.createElement("div", { style: { minWidth: 0 } }, /* @__PURE__ */ React.createElement("b", null, title), /* @__PURE__ */ React.createElement("span", { className: "pv-sub" }, "A4 ", landscape ? "landscape" : "portrait", info ? " · " + info.pages + (info.pages === 1 ? " page" : " pages") + " · " + DENS_LABEL[info.d] + " layout" : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, (hasIds || def.photos) && /* @__PURE__ */ React.createElement("span", { className: "pv-opts", role: "group", "aria-label": "Print options" }, def.photos && /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "po-photos", checked: opts.showPhotos, onChange: (e) => setOpts({ ...opts, showPhotos: e.target.checked }) }), " Show photos"), hasIds && (!def.idKinds || def.idKinds.indexOf("booking") >= 0) && /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "po-booking", checked: opts.showBooking, onChange: (e) => setOpts({ ...opts, showBooking: e.target.checked }) }), " Show Booking Number"), hasIds && (!def.idKinds || def.idKinds.indexOf("shareholder") >= 0) && /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "po-shareholder", checked: opts.showShareholder, onChange: (e) => setOpts({ ...opts, showShareholder: e.target.checked }) }), " Show Shareholder Number")), /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => setZoomMode(zoomMode === "fit" ? "full" : "fit") }, zoomMode === "fit" ? "Actual size" : "Fit to screen"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", icon: "printer", onClick: doPrint }, "Print A4"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "x", onClick: onClose }, "Close"))), blocked && /* @__PURE__ */ React.createElement("div", { className: "pv-note", role: "status" }, /* @__PURE__ */ React.createElement("b", null, "Printing did not open."), " This preview may be embedded in a page that blocks the print dialog. Open the app in its own browser tab, then choose Print A4 (or press Ctrl/Cmd+P) to print or save as PDF. The layout shown here is the layout that will print."), /* @__PURE__ */ React.createElement("div", { className: "pv-scroll", ref: wrap }, /* @__PURE__ */ React.createElement("div", { className: "paper-outer", style: { width: pw * scale } }, /* @__PURE__ */ React.createElement("div", { className: "paper" + (landscape ? " land" : ""), style: { zoom: scale, width: pw } }, el))), root && ReactDOM.createPortal(/* @__PURE__ */ React.createElement("div", { className: "print-copy", "data-orient": landscape ? "landscape" : "portrait" }, el), root));
   }
+function PrintThumb({ db, sh }) {
+  const doc = okDoc(db, sh.photo_doc_id), url = useFileUrl(doc);
+  return doc && isImg(doc) && url ? /* @__PURE__ */ React.createElement("img", { className: "pl-ph", src: url, alt: "" }) : /* @__PURE__ */ React.createElement("span", { className: "pl-ph pl-ph0" }, String(sh.full_name || "?").trim().charAt(0).toUpperCase());
+}
+PRINT_DOCS.shList = {
+  title: () => "Shareholder list",
+  landscape: () => true,
+  ids: () => true,
+  idKinds: ["shareholder"],
+  photos: true,
+  render: (ctx, a) => {
+    const db = ctx.db, o = oo(ctx), want = {};
+    (a.ids || []).forEach((id) => {
+      want[id] = true;
+    });
+    let rows = db.shareholders.filter((s) => live(s) && want[s.id]).map((s) => {
+      const c = Calc.shareholder(db, s);
+      return { id: s.id, s, c, code: s.code, name: s.full_name, phone: s.phone, shares: c.shares, value: c.shareValue, paid: c.sharePaid, due: c.shareDue, cpaid: c.consPaid, cdue: c.consDue, status: s.status };
+    });
+    const order = {};
+    (a.ids || []).forEach((id, i) => {
+      order[id] = i;
+    });
+    rows.sort((x, y) => order[x.id] - order[y.id]);
+    if (a.sort && a.sort.key) {
+      const k = a.sort.key, out = rows.slice().sort((x, y) => {
+        const p = x[k], q = y[k];
+        return typeof p === "number" && typeof q === "number" ? p - q : cmpStr(p == null ? "" : p, q == null ? "" : q);
+      });
+      rows = a.sort.dir < 0 ? out.reverse() : out;
+    }
+    const cols = [
+      o.showPhotos ? { l: "Photo", f: (r) => /* @__PURE__ */ React.createElement(PrintThumb, { db, sh: r.s }) } : null,
+      o.showShareholder ? { l: "Shareholder ID", f: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.code) } : null,
+      { l: "Name", f: (r) => /* @__PURE__ */ React.createElement("b", null, r.name) },
+      { l: "Phone", f: (r) => r.phone || "—" },
+      { l: "Shares", r: true, f: (r) => r.shares },
+      { l: "Total share value", r: true, f: (r) => fmtMoney(r.value) },
+      { l: "Paid", r: true, f: (r) => GIN(r.paid) },
+      { l: "Due", r: true, f: (r) => RDUE(r.due) },
+      { l: "Construction paid", r: true, f: (r) => GIN(r.cpaid) },
+      { l: "Construction due", r: true, f: (r) => RDUE(r.cdue) },
+      { l: "Status", f: (r) => r.status }
+    ];
+    const foot = rows.length ? { 4: sum(rows, (r) => r.shares), 5: fmtMoney(sum(rows, (r) => r.value)), 6: GIN(sum(rows, (r) => r.paid)), 7: RDUE(sum(rows, (r) => r.due)), 8: GIN(sum(rows, (r) => r.cpaid)), 9: RDUE(sum(rows, (r) => r.cdue)) } : null;
+    if (foot) foot[2] = "Total";
+    return /* @__PURE__ */ React.createElement(DocFrame, { ctx, landscape: true, title: "Shareholder list", docNo: "SL-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement("p", { className: "dnote" }, rows.length, " shareholder", rows.length === 1 ? "" : "s", a.flt && a.flt !== "all" ? " · Filter: " + a.flt : "", a.q ? " · Search: “" + a.q + "”" : "", ". Land share money and construction contribution money are kept apart. Figures are as of today."), /* @__PURE__ */ React.createElement(Sect, { title: "Shareholders" }, /* @__PURE__ */ React.createElement(DT, { cols, rows, foot, empty: "No shareholder matches the current filter and search." })), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name]] }));
+  }
+};
+
   PRINT_DOCS.deed = DEED_DOC;
   MODAL_REGISTRY.printPreview = PrintPreview;
   MODAL_REGISTRY.lightbox = Lightbox;
