@@ -526,6 +526,8 @@ tr.row-fu > td{background:var(--bad-bg)}
   .print-copy .doc{break-after:page;page-break-after:always}
   .print-copy .doc:last-child{break-after:auto;page-break-after:auto}
 }
+
+.revnote{margin-top:6px}.revpill{background:#FEF3C7;color:#92400E;font-size:10px;padding:1px 6px;border-radius:999px}.dnote.revnote{font-size:8pt;border-top:1px dashed #D1D5DB;padding-top:3px;margin-top:4px}
 </style>
 <div id="root"></div>
 <div id="print-root"></div>
@@ -770,6 +772,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       project_expenses: [],
       documents: [],
       audit_logs: [],
+      payment_revisions: [],
       settings: []
     };
     const D = { _demo: false, archived_at: null };
@@ -833,7 +836,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     project_expenses: ["status", "reversed_by_id", "approval_status", "approved_by"],
     audit_logs: []
   };
-  const PK_TABLES = ["users", "shareholders", "nominees", "units", "share_bookings", "share_payments", "construction_plans", "construction_payments", "contractors", "contract_installments", "project_expenses", "documents", "audit_logs", "settings", "customers", "customer_nominees", "payment_followups", "deed_agreements"];
+  const EDIT_MUTABLE = { share_payments: ["amount", "payment_date", "method", "method_details", "reference", "note", "revision_no", "updated_at"], construction_payments: ["amount", "payment_date", "method", "method_details", "reference", "note", "revision_no", "updated_at"] };
+  const PK_TABLES = ["users", "shareholders", "nominees", "units", "share_bookings", "share_payments", "construction_plans", "construction_payments", "contractors", "contract_installments", "project_expenses", "documents", "audit_logs", "settings", "customers", "customer_nominees", "payment_followups", "deed_agreements", "payment_revisions"];
   class MockRepository {
     constructor(seed) {
       this.kind = "Mock (in-memory)";
@@ -867,7 +871,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
             return r.id === op.id;
           })[0];
           if (!row) throw new RepoError("NOT_FOUND", "Record not found in " + op.table);
-          const allowed = LEDGER_MUTABLE[op.table];
+          const allowed = op.edit && EDIT_MUTABLE[op.table] ? EDIT_MUTABLE[op.table] : LEDGER_MUTABLE[op.table];
           if (allowed) Object.keys(op.patch).forEach(function(k) {
             if (allowed.indexOf(k) < 0) throw new RepoError("IMMUTABLE", "Historical financial records cannot be edited. Reverse the entry and record a corrected one.");
           });
@@ -948,8 +952,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     if (!f) throw new RepoError("NO_CLIENT", "The Supabase client library is not loaded in this build.");
     return f(c.url, c.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
   }
-  const SB_TABLES = { users: "v_user_directory", shareholders: "shareholders", nominees: "nominees", units: "units", share_bookings: "share_bookings", share_payments: "share_payments", construction_plans: "construction_plans", construction_payments: "construction_payments", contractors: "contractors", contract_installments: "contract_installments", project_expenses: "project_expenses", documents: "documents", audit_logs: "v_audit_feed", settings: "project_settings", customers: "customers", customer_nominees: "customer_nominees", payment_followups: "payment_followups", deed_agreements: "deed_agreements" };
-  const SB_OPTIONAL = { payment_followups: 1, deed_agreements: 1 };
+  const SB_TABLES = { users: "v_user_directory", shareholders: "shareholders", nominees: "nominees", units: "units", share_bookings: "share_bookings", share_payments: "share_payments", construction_plans: "construction_plans", construction_payments: "construction_payments", contractors: "contractors", contract_installments: "contract_installments", project_expenses: "project_expenses", documents: "documents", audit_logs: "v_audit_feed", settings: "project_settings", customers: "customers", customer_nominees: "customer_nominees", payment_followups: "payment_followups", deed_agreements: "deed_agreements", payment_revisions: "payment_revisions" };
+  const SB_OPTIONAL = { payment_followups: 1, deed_agreements: 1, payment_revisions: 1 };
   const SB_VIEW_FALLBACK = { v_user_directory: "profiles", v_audit_feed: "audit_logs" };
   const SB_ORDER = { v_user_directory: "created_at", v_audit_feed: "id", users: "created_at", audit_logs: "id", settings: "id", contract_installments: "id", units: "id" };
   const SB_PAGE = 1e3;
@@ -982,10 +986,11 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     customer_nominees: (r) => Object.assign({}, r),
     payment_followups: (r) => Object.assign({}, r),
     deed_agreements: (r) => numFields(Object.assign({}, r), ["agreed_price", "paid_total", "revision_no"]),
+    payment_revisions: (r) => numFields(Object.assign({}, r), ["revision_no"]),
     share_bookings: (r) => numFields(Object.assign({}, r), ["quantity", "unit_price", "discount", "gross_total", "grand_total"]),
-    share_payments: (r) => numFields(Object.assign({}, r), ["amount"]),
+    share_payments: (r) => numFields(Object.assign({}, r), ["amount", "revision_no"]),
     construction_plans: (r) => numFields(Object.assign({}, r), ["total_amount"]),
-    construction_payments: (r) => numFields(Object.assign({}, r), ["amount"]),
+    construction_payments: (r) => numFields(Object.assign({}, r), ["amount", "revision_no"]),
     contractors: (r) => numFields(Object.assign({}, r), ["contract_value"]),
     contract_installments: (r) => numFields(Object.assign({}, r), ["no", "amount"]),
     project_expenses: (r) => {
@@ -1133,7 +1138,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   const live = function(r) {
     return !r.archived_at;
   };
-  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles"], "Project Author": ["write", "reverse", "approve", "settings", "users"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
+  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles", "editPayment"], "Project Author": ["write", "reverse", "approve", "settings", "users", "editPayment"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
   const DB_ROLES = ["Super Admin", "Project Author"];
   function can(user, perm) {
     return !!user && (PERMS[user.role] || []).indexOf(perm) >= 0;
@@ -2142,6 +2147,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       await commit([rev, { op: "update", table: "share_payments", id: p.id, patch: { status: "Reversed", reversed_by_id: rev.row.id } }, audit("Reversed payment", "share_payment", p.id, "Reversed " + p.receipt_no + " (" + fmtMoney(p.amount) + ")", { shareholder_id: p.shareholder_id, reason })]);
       return rev.row;
     };
+    S.editPayment = async function(kind, id, input, requestId) {
+      guard("editPayment");
+      const db = getDb(), tn = kind === "share" ? "share_payments" : "construction_payments", p = Calc.byId(db[tn], id);
+      const imp = editPrecheck(db, kind, p, input), u = getUser(), rn = (p.revision_no || 0) + 1, reason = String(input.reason).trim();
+      const rev = ins("payment_revisions", { id: uid("rev"), share_payment_id: kind === "share" ? id : null, construction_payment_id: kind === "share" ? null : id, revision_no: rn, before_values: imp.prev, after_values: imp.next, changed_fields: imp.changed, reason, edited_by: u.id, edited_at: nowIso(), client_request_id: requestId || uid("req"), deed_affected: imp.deeds.length ? imp.deeds.map((d) => ({ deed_id: d.id, revision_no: d.revision_no, paid_total: d.paid_total, paid_as_of: d.paid_as_of })) : null });
+      await commit([rev, { op: "update", table: tn, id, edit: true, patch: Object.assign({}, imp.next, { revision_no: rn }) }, audit("Edited payment", kind === "share" ? "share_payment" : "construction_payment", id, "Edited payment " + p.receipt_no + " (revision " + rn + "): changed " + imp.changed.join(", ") + ".", { shareholder_id: p.shareholder_id, customer_id: p.customer_id || null, reason, before: imp.prev, after: imp.next })], requestId);
+      return Calc.byId(getDb()[tn], id);
+    };
     S.archiveBooking = async function(id, reason) {
       guard("archive");
       const db = getDb(), b = Calc.byId(db.share_bookings, id), s = Calc.bookingSummary(db, b);
@@ -2387,7 +2400,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   }
   const SB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const SB_IMG = ["image/jpeg", "image/png", "image/webp"];
-  const SB_TITLES = { VALIDATION: "Check the form", FORBIDDEN: "Permission needed", NEEDS_CONFIRMATION: "Needs confirmation", NO_CHANGE: "No changes", DUPLICATE_SUBMISSION: "Already submitted", IMMUTABLE: "Cannot change", HAS_LINKS: "Cannot archive yet", NOT_FOUND: "Not found", OVERPAY: "Payment too high" };
+  const SB_TITLES = { VALIDATION: "Check the form", FORBIDDEN: "Permission needed", NEEDS_CONFIRMATION: "Needs confirmation", NO_CHANGE: "No changes", DUPLICATE_SUBMISSION: "Already submitted", IMMUTABLE: "Cannot change", HAS_LINKS: "Cannot archive yet", NOT_FOUND: "Not found", OVERPAY: "Payment too high", REVISION_CONFLICT: "Changed by someone else", NOT_EDITABLE: "Cannot edit" };
   const sbUuid = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
     return (c === "x" ? r : r & 3 | 8).toString(16);
@@ -2576,6 +2589,28 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const rev = await rpc("reverse_share_payment", { p_id: id, p_reason: reason });
       await done();
       return find("share_payments", rev);
+    };
+    S.editPayment = async function(kind, id, input, requestId) {
+      guard("editPayment");
+      const db = getDb(), tn = kind === "share" ? "share_payments" : "construction_payments", p = Calc.byId(db[tn], id);
+      editPrecheck(db, kind, p, input);
+      try {
+        await rpc(kind === "share" ? "edit_share_payment" : "edit_construction_payment", { p_request_id: reqId(requestId), p_payment_id: id, p_expected_revision: input.expected_revision != null ? Number(input.expected_revision) : Number(p.revision_no || 0), p_data: payJson(input), p_reason: String(input.reason).trim(), p_allow_overpay: !!input.allowOverpay, p_allow_duplicate: !!input.allowDuplicate, p_ack_deed: !!input.ackDeed });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return find(tn, id);
+        }
+        if (e && e.code === "REVISION_CONFLICT") {
+          try {
+            await done();
+          } catch (e2) {
+          }
+        }
+        throw e;
+      }
+      await done();
+      return find(tn, id);
     };
     S.archiveBooking = async function(id, reason) {
       guard("archive");
@@ -4387,13 +4422,13 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     return /* @__PURE__ */ React.createElement(Modal, { title: d.file_name, sub: d.code, onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Close"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "eye", onClick: () => open("lightbox", { docId: d.id }) }, "Open larger preview")) }, /* @__PURE__ */ React.createElement("div", { className: "docprev" }, /* @__PURE__ */ React.createElement(DocThumb, { doc: d, alt: d.file_name })), /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Document ID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, d.code), /* @__PURE__ */ React.createElement("dt", null, "Type"), /* @__PURE__ */ React.createElement("dd", null, d.doc_type), /* @__PURE__ */ React.createElement("dt", null, "Belongs to"), /* @__PURE__ */ React.createElement("dd", null, relatedLabel(db, d)), /* @__PURE__ */ React.createElement("dt", null, "File type"), /* @__PURE__ */ React.createElement("dd", null, d.file_type), /* @__PURE__ */ React.createElement("dt", null, "Size"), /* @__PURE__ */ React.createElement("dd", null, fmtBytes(d.size_bytes)), /* @__PURE__ */ React.createElement("dt", null, "Uploaded"), /* @__PURE__ */ React.createElement("dd", null, fmtDateTime(d.uploaded_at), " by ", userName(db, d.uploaded_by)), /* @__PURE__ */ React.createElement("dt", null, "Description"), /* @__PURE__ */ React.createElement("dd", null, d.description || "—"), /* @__PURE__ */ React.createElement("dt", null, "Storage path"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, d.storage_path)));
   }
   function ReceiptModal({ kind, id, onClose }) {
-    const { db, open } = useApp();
+    const { db, open, user } = useApp();
     const p = Calc.byId(kind === "share" ? db.share_payments : db.construction_payments, id);
     if (!p) return null;
     const b = kind === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = kind === "cons" ? Calc.byId(db.units, p.unit_id) : null, cplan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, att = p.attachment_doc_id ? Calc.byId(db.documents, p.attachment_doc_id) : null;
     const plan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, pc = plan ? Calc.plan(db, plan) : null, bs = b ? Calc.bookingSummary(db, b) : null;
     const tot = pc ? pc.total : bs ? bs.grand : 0, paid = pc ? pc.paid : bs ? bs.paid : 0, due = pc ? pc.due : bs ? bs.due : 0;
-    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? shName(db, p.shareholder_id) : buyerName(db, p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : u ? "Unit" : "Plan"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u ? u.code : cplan ? cplan.code : "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : "")));
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, can(user, "editPayment") && Array.isArray(db.payment_revisions) && p.kind === "payment" && p.status === "Posted" && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => { onClose(); open("editPayment", { kind, id }); } }, "Edit payment"), /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? shName(db, p.shareholder_id) : buyerName(db, p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : u ? "Unit" : "Plan"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u ? u.code : cplan ? cplan.code : "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : ""), /* @__PURE__ */ React.createElement(RevNote, { db, kind, id }))));
   }
   function ReverseDialog({ kind, id, onClose }) {
     const { db, S, run, open } = useApp();
@@ -4559,7 +4594,125 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setErr("");
     }, placeholder: "Recorded in the audit log" }))));
   }
-  const MODAL_REGISTRY = { customerArchive: CustomerArchiveForm, planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, deed: DeedForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, docView: DocView, exportPreview: ExportModal };
+  const EDIT_FIELDS = ["amount", "payment_date", "method", "method_details", "reference", "note"];
+const EDIT_FIELD_LABEL = { amount: "Amount", payment_date: "Payment date", method: "Method", method_details: "Method details", reference: "Reference", note: "Note" };
+const editEnabled = (db) => Array.isArray(db.payment_revisions);
+function revisionsOf(db, kind, id) {
+  const key = kind === "share" ? "share_payment_id" : "construction_payment_id";
+  return (db.payment_revisions || []).filter((r) => r[key] === id).sort((a, b) => a.revision_no - b.revision_no);
+}
+function editFieldText(k, v) {
+  if (k === "amount") return fmtMoney(Number(v));
+  if (k === "payment_date") return fmtDate(v);
+  const s = String(v == null ? "" : v).trim();
+  return s === "" ? "(empty)" : s;
+}
+function revisionChanges(r) {
+  const b = r.before_values || {}, a = r.after_values || {};
+  return (r.changed_fields || []).map((k) => EDIT_FIELD_LABEL[k] + ": " + editFieldText(k, b[k]) + " → " + editFieldText(k, a[k]));
+}
+function editImpact(db, kind, p, f) {
+  const norm = (v) => String(v == null ? "" : v).trim();
+  const amt = roundMoney(Number(f.amount));
+  const next = { amount: amt, payment_date: f.payment_date, method: f.method || "", method_details: f.method === "Others" ? norm(f.method_details) : "", reference: norm(f.reference), note: String(f.note == null ? "" : f.note) };
+  const prev = { amount: p.amount, payment_date: p.payment_date, method: p.method || "", method_details: p.method_details || "", reference: p.reference || "", note: p.note || "" };
+  const changed = EDIT_FIELDS.filter((k) => k === "amount" ? Math.abs(Number(prev.amount) - Number(next.amount)) > 5e-3 || isNaN(next.amount) : String(prev[k]) !== String(next[k]));
+  const out = { prev, next, changed, due: null, overpay: 0, duplicate: null, deeds: [] };
+  let others = [], total = 0;
+  if (kind === "share") {
+    const b = Calc.byId(db.share_bookings, p.booking_id);
+    if (!b) return out;
+    total = Math.max(0, roundMoney(b.quantity * b.unit_price) - (b.discount || 0));
+    others = db.share_payments.filter((x) => x.booking_id === b.id && x.id !== p.id);
+  } else {
+    const plan = Calc.byId(db.construction_plans, p.plan_id);
+    if (!plan) return out;
+    total = plan.total_amount;
+    others = db.construction_payments.filter((x) => x.plan_id === plan.id && x.id !== p.id);
+  }
+  out.due = roundMoney(total - sum(others, (x) => x.amount));
+  if (!isNaN(amt)) {
+    const over = (a) => Math.max(0, a - out.due), oN = over(amt), oO = over(p.amount);
+    out.overpay = oN > oO + 5e-3 ? roundMoney(oN) : 0;
+  }
+  if (changed.some((k) => k === "amount" || k === "payment_date" || k === "reference")) {
+    out.duplicate = others.filter((x) => x.kind === "payment" && x.status === "Posted" && x.amount === next.amount && x.payment_date === next.payment_date && norm(x.reference) === next.reference)[0] || null;
+  }
+  if (kind === "cons" && Calc.deedsEnabled(db) && (changed.indexOf("amount") >= 0 || changed.indexOf("payment_date") >= 0)) {
+    out.deeds = (db.deed_agreements || []).filter((d) => d.plan_id === p.plan_id && d.status === "Final" && d.paid_as_of && (p.payment_date <= d.paid_as_of && (next.amount !== p.amount || next.payment_date > d.paid_as_of) || p.payment_date > d.paid_as_of && next.payment_date <= d.paid_as_of));
+  }
+  return out;
+}
+function editPrecheck(db, kind, p, input) {
+  if (!editEnabled(db)) throw new AppError("Payment editing is not available yet. Nothing was saved.", "Not available yet", "NOT_AVAILABLE");
+  if (!p || p.kind !== "payment" || p.status !== "Posted" || p.reversed_by_id) throw new AppError("Only a posted payment that has not been reversed can be edited.", "Cannot edit", "NOT_EDITABLE");
+  if (V.hasErrors(V.paymentCore(input))) throw new AppError("Please fix the highlighted fields and try again.", "Check the form", "VALIDATION");
+  if (String(input.reason || "").trim().length < 3) throw new AppError("Give a reason for the correction.", "Reason needed", "VALIDATION");
+  if (input.expected_revision != null && Number(input.expected_revision) !== Number(p.revision_no || 0)) throw new AppError("This payment was changed by someone else while you were editing. Reload it and try again.", "Changed by someone else", "REVISION_CONFLICT");
+  const imp = editImpact(db, kind, p, input);
+  if (!imp.changed.length) throw new AppError("Nothing was changed.", "No changes", "NO_CHANGE");
+  if (imp.overpay && !input.allowOverpay) throw new AppError("This edit would put the account " + fmtMoney(imp.overpay) + " over its total.", "Needs confirmation", "NEEDS_CONFIRMATION");
+  if (imp.duplicate && !input.allowDuplicate) throw new AppError("Another payment with the same amount, date and reference already exists (" + imp.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
+  if (imp.deeds.length && !input.ackDeed) throw new AppError("This plan has a finalized Deed of Agreement whose saved paid-to-date figure will no longer match.", "Needs confirmation", "NEEDS_CONFIRMATION");
+  return imp;
+}
+function RevNote({ db, kind, id, print }) {
+  const revs = revisionsOf(db, kind, id).slice().reverse();
+  if (!revs.length) return null;
+  const last = revs[0];
+  const head = "Revision " + last.revision_no + ": corrected by " + userName(db, last.edited_by) + " on " + fmtDateTime(last.edited_at) + ". Reason: " + last.reason;
+  if (!print) return /* @__PURE__ */ React.createElement("div", { className: "hint revnote", "data-testid": "rev-note" }, head, /* @__PURE__ */ React.createElement("ul", { style: { margin: "4px 0 0 16px", padding: 0 } }, revs.map((r) => /* @__PURE__ */ React.createElement("li", { key: r.id }, "Rev " + r.revision_no + " (" + fmtDate(String(r.edited_at).slice(0, 10)) + "): " + revisionChanges(r).join("; ")))));
+  return /* @__PURE__ */ React.createElement("div", { className: "dnote revnote", "data-testid": "rev-note-print" }, /* @__PURE__ */ React.createElement("b", null, "This receipt shows corrected information. "), head, revs.map((r) => /* @__PURE__ */ React.createElement("div", { key: r.id }, "Rev " + r.revision_no + " (" + fmtDate(String(r.edited_at).slice(0, 10)) + "): " + revisionChanges(r).join("; "))));
+}
+function EditPaymentForm({ kind, id, onClose }) {
+  const { db, S, run, open } = useApp();
+  const reqId = useRequestId();
+  const p = Calc.byId(kind === "share" ? db.share_payments : db.construction_payments, id);
+  const initOf = (r) => ({ amount: String(r.amount), payment_date: r.payment_date, method: r.method || "", method_details: r.method_details || "", reference: r.reference || "", note: r.note || "", reason: "" });
+  const [f, set, setF] = useForm(p ? initOf(p) : {});
+  const [rev0, setRev0] = useState(p ? p.revision_no || 0 : 0);
+  const [errs, setErrs] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [okc, setOkc] = useState({ over: false, dup: false, deed: false });
+  const [conflict, setConflict] = useState(false);
+  if (!p) return null;
+  const imp = editImpact(db, kind, p, f);
+  const hist = revisionsOf(db, kind, id).slice().reverse();
+  const needs = { over: !!imp.overpay, dup: !!imp.duplicate, deed: imp.deeds.length > 0 };
+  const submit = async () => {
+    const e = Object.assign({}, V.paymentCore(f));
+    if (String(f.reason || "").trim().length < 3) e.reason = "Give a reason. It is saved with the correction.";
+    if (!imp.changed.length) e.nochange = "Change at least one field.";
+    setErrs(e);
+    if (V.hasErrors(e)) return;
+    if (needs.over && !okc.over || needs.dup && !okc.dup || needs.deed && !okc.deed) {
+      setErrs({ confirm: "Tick the confirmation above to continue." });
+      return;
+    }
+    setBusy(true);
+    const r = await run(() => S.editPayment(kind, id, Object.assign({}, f, { reason: String(f.reason).trim(), expected_revision: rev0, allowOverpay: okc.over, allowDuplicate: okc.dup, ackDeed: okc.deed }), reqId), "Payment corrected");
+    setBusy(false);
+    if (!r.ok) {
+      if (r.e && r.e.code === "REVISION_CONFLICT") setConflict(true);
+      return;
+    }
+    onClose();
+    open("receipt", { kind, id });
+  };
+  const reload = () => {
+    setF(initOf(p));
+    setRev0(p.revision_no || 0);
+    setOkc({ over: false, dup: false, deed: false });
+    setConflict(false);
+    setErrs({});
+  };
+  const chk = (key, label) => /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 8, alignItems: "center", marginTop: 6 } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", "data-testid": "ok-" + key, checked: okc[key], onChange: (e) => setOkc((o) => Object.assign({}, o, { [key]: e.target.checked })) }), label);
+  const dispVal = (k, v, src) => k === "method" ? methodLabel({ method: src.method, method_details: src.method_details }) : editFieldText(k, v);
+  const rows = imp.changed.filter((k) => k !== "method_details" || imp.changed.indexOf("method") < 0);
+  return /* @__PURE__ */ React.createElement(Modal, { title: "Edit payment " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Save correction" }) }, /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "The old values are kept in the revision history. The receipt number does not change and the receipt will show the corrected information."), conflict && /* @__PURE__ */ React.createElement(Note, { tone: "bad" }, /* @__PURE__ */ React.createElement("b", null, "This payment was changed by someone else."), " The latest values are loaded when you press the button. Nothing of yours was saved. ", /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: reload }, "Load latest values")), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Amount", req: true, err: errs.amount }, /* @__PURE__ */ React.createElement(Money, { value: f.amount, onChange: set("amount"), "data-testid": "ep-amount" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", req: true, err: errs.payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.payment_date, onChange: set("payment_date"), max: TODAY, "data-testid": "ep-date" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method" }, /* @__PURE__ */ React.createElement(Sel, { value: f.method, onChange: set("method"), options: METHODS, placeholder: "Select method (optional)", "data-testid": "ep-method" })), f.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details" }, /* @__PURE__ */ React.createElement(Txt, { value: f.method_details || "", onChange: set("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Transaction / cheque reference" }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference, onChange: set("reference"), "data-testid": "ep-ref" })), /* @__PURE__ */ React.createElement(Field, { label: "Note", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.note, onChange: set("note") })), /* @__PURE__ */ React.createElement(Field, { label: "Reason for the correction", req: true, full: true, err: errs.reason || errs.nochange }, /* @__PURE__ */ React.createElement(Area, { value: f.reason, onChange: set("reason"), placeholder: "For example: wrong amount typed, bank slip shows 40,000", "data-testid": "ep-reason" }))), rows.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "sumbox card", "data-testid": "ep-preview", style: { padding: "4px 14px", marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("b", null, "Before → after")), rows.map((k) => /* @__PURE__ */ React.createElement("div", { className: "sumrow", key: k }, /* @__PURE__ */ React.createElement("span", null, EDIT_FIELD_LABEL[k]), /* @__PURE__ */ React.createElement("span", null, dispVal(k, imp.prev[k], imp.prev), " → ", /* @__PURE__ */ React.createElement("b", null, dispVal(k, imp.next[k], imp.next))))), imp.due != null && !isNaN(imp.next.amount) && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due after this edit"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(roundMoney(imp.due - imp.next.amount))))), needs.over && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This edit puts the account ", fmtMoney(imp.overpay), " over its total."), " It will show as an overpayment.", chk("over", "I confirm this is intended")), needs.dup && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Possible duplicate."), " Another payment with the same amount, date and reference exists (", imp.duplicate.receipt_no, ").", chk("dup", "I confirm this is a separate payment")), needs.deed && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Finalized Deed of Agreement."), " Its saved paid-to-date figure will NOT change and will no longer match the payments. The impact is recorded with this correction.", chk("deed", "I understand and want to continue")), errs.confirm && /* @__PURE__ */ React.createElement("div", { className: "err", role: "alert" }, errs.confirm), hist.length > 0 && /* @__PURE__ */ React.createElement("details", { style: { marginTop: 10 }, "data-testid": "ep-history" }, /* @__PURE__ */ React.createElement("summary", null, "Revision history (", hist.length, ")"), hist.map((r) => /* @__PURE__ */ React.createElement("div", { className: "sumbox card", key: r.id, style: { padding: "6px 14px", marginTop: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, "Revision ", r.revision_no), " · ", fmtDateTime(r.edited_at), " · ", userName(db, r.edited_by)), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Reason: ", r.reason), revisionChanges(r).map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "hint" }, t))))));
+}
+
+  const MODAL_REGISTRY = { customerArchive: CustomerArchiveForm, planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, deed: DeedForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, editPayment: EditPaymentForm, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
     const out = [], payVis = Calc.payVisible(db);
@@ -4576,9 +4729,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     return type === "share" ? /* @__PURE__ */ React.createElement("span", { className: "pill pill-share" }, "Land share") : /* @__PURE__ */ React.createElement("span", { className: "pill pill-cons" }, "Construction");
   }
   function LedgerTable({ rows, showWho = true, pageSize = 10, empty }) {
-    const { user, open } = useApp();
+    const { db, user, open } = useApp();
     const cols = [
-      { key: "receipt", label: "Receipt", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt) },
+      { key: "receipt", label: "Receipt", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt, r.rec && r.rec.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "pill revpill", title: "Corrected " + r.rec.revision_no + " time(s)", style: { marginLeft: 6 } }, "Rev " + r.rec.revision_no)) },
       { key: "date", label: "Date", render: (r) => fmtDate(r.date) },
       { key: "type", label: "Type", render: (r) => /* @__PURE__ */ React.createElement(TypePill, { type: r.type }) },
       showWho && { key: "who", label: rows.some((r) => r.customer_id) ? "Shareholder / customer" : "Shareholder", render: (r) => r.customer_id ? /* @__PURE__ */ React.createElement(BuyerLink, { row: r.rec }) : /* @__PURE__ */ React.createElement(ShLink, { id: r.shareholder_id }) },
@@ -4590,6 +4743,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       { key: "actions", label: "", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(RowMenu, { items: [
         { label: "View receipt", icon: "receipt", onClick: () => open("receipt", { kind: r.type, id: r.id }) },
         { label: "Print receipt (A4)", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind: r.type, id: r.id } }) },
+        { label: "Edit payment", icon: "edit", hidden: !(r.canReverse && can(user, "editPayment") && Array.isArray(db.payment_revisions)), onClick: () => open("editPayment", { kind: r.type, id: r.id }) },
         { label: "Reverse entry", icon: "undo", danger: true, hidden: !(r.canReverse && can(user, "reverse")), onClick: () => open("reverse", { kind: r.type, id: r.id }) }
       ] })) }
     ].filter(Boolean);
@@ -4995,7 +5149,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       bal[l.id] = run;
     });
     const cols = [
-      { key: "receipt", label: "Receipt no.", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt) },
+      { key: "receipt", label: "Receipt no.", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt, r.rec && r.rec.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "pill revpill", title: "Corrected " + r.rec.revision_no + " time(s)", style: { marginLeft: 6 } }, "Rev " + r.rec.revision_no)) },
       { key: "date", label: "Date", render: (r) => fmtDate(r.date) },
       { key: "amount", label: "Amount", align: "r", render: (r) => MPay(r.rec) },
       { key: "method", label: "Method" },
@@ -5005,6 +5159,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       { key: "status", label: "Status", render: (r) => /* @__PURE__ */ React.createElement(Status, { v: r.status }) },
       { key: "actions", label: "", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind: "cons", id: r.id } }) }, "Receipt"), /* @__PURE__ */ React.createElement(RowMenu, { items: [
         { label: "View receipt", icon: "receipt", onClick: () => open("receipt", { kind: "cons", id: r.id }) },
+        { label: "Edit payment", icon: "edit", hidden: !(r.canReverse && can(user, "editPayment") && Array.isArray(db.payment_revisions)), onClick: () => open("editPayment", { kind: "cons", id: r.id }) },
         { label: "Reverse entry", icon: "undo", danger: true, hidden: !(r.canReverse && can(user, "reverse")), onClick: () => open("reverse", { kind: "cons", id: r.id }) }
       ] })) }
     ];
@@ -5612,7 +5767,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
         const att = okDoc(db, p.attachment_doc_id), reversed = p.status === "Reversed", isRev = p.kind === "reversal";
         const unit = share ? db.units.filter((x) => live(x) && x.shareholder_id === sh.id) : [u];
         if (!sh) return /* @__PURE__ */ React.createElement(Missing, null);
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh, !share && p.customer_id ? "Customer" : void 0, oo(ctx))), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : u ? "Unit" : "Construction plan" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [oo(ctx).showBooking ? ["Booking", b.code] : null, ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : (u ? [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"]] : [["Unit", "Not linked yet"]]).concat([["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]]) })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: () => INAMT(p) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: methodLabel(p), x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", GIN(paidAt), "Including this payment"], ["Remaining due", RDUE(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: isRev ? "Payment reversal note" : share ? "Share payment receipt" : "Construction contribution receipt", docNo: p.receipt_no, date: p.payment_date }, reversed && /* @__PURE__ */ React.createElement("div", { className: "stamp" }, "REVERSED"), /* @__PURE__ */ React.createElement(Sect, { title: "Received from" }, partyBox(db, sh, !share && p.customer_id ? "Customer" : void 0, oo(ctx))), /* @__PURE__ */ React.createElement(Sect, { title: share ? "Booking and unit" : u ? "Unit" : "Construction plan" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: share ? [oo(ctx).showBooking ? ["Booking", b.code] : null, ["Shares booked", b.quantity + " × " + fmtMoney(b.unit_price)], ["Unit(s)", unit.map((x) => x.code).join(", ") || "Not assigned yet"], ["Payment type", "Land share payment"]] : (u ? [["Unit", /* @__PURE__ */ React.createElement("b", null, u.code)], ["Floor · size", floorName(u.floor) + " · " + u.size_sqft.toLocaleString("en-US") + " sq ft"]] : [["Unit", "Not linked yet"]]).concat([["Contribution ref.", plan.code], ["Payment type", "Construction contribution"]]) })), /* @__PURE__ */ React.createElement(Sect, { title: "Payment details" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Receipt no.", k: "r" }, { l: "Date", k: "d" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: () => INAMT(p) }], rows: [{ r: p.receipt_no, d: fmtDate(p.payment_date), m: methodLabel(p), x: p.reference || "—" }] }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Amount in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(Math.abs(p.amount)))), p.note && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Note: ", p.note), isRev && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "This entry cancels ", db.construction_payments.concat(db.share_payments).filter((x) => x.id === p.reversal_of).map((x) => x.receipt_no).join(""), ". Reason: ", p.reversal_reason)), /* @__PURE__ */ React.createElement(Sect, { title: "Account position after this payment" }, /* @__PURE__ */ React.createElement(Boxes, { items: [[share ? "Booking total" : "Total contribution", fmtMoney(total)], ["Total paid to date", GIN(paidAt), "Including this payment"], ["Remaining due", RDUE(dueAt), total ? fmtPct(Math.max(0, paidAt / total * 100)) + " paid" : ""]] }), /* @__PURE__ */ React.createElement(PBar, { pct: total ? paidAt / total * 100 : 0 })), /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "dmeta" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), att ? " · Attachment on file: " + att.file_name : ""), /* @__PURE__ */ React.createElement(RevNote, { db, kind: share ? "share" : "cons", id: p.id, print: true })), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Received by", "Name, signature and date"], ["Authorised signatory", st(ctx).company_name], ["Shareholder / client", sh.full_name]] }), /* @__PURE__ */ React.createElement("p", { className: "dnote center" }, "This receipt is valid only when signed by an authorised signatory. Payments are subject to verification by the company."));
       }
     },
     /* Share booking / transaction document */
@@ -6210,7 +6365,7 @@ PRINT_DOCS.shList = {
   function LoadingShell() {
     return /* @__PURE__ */ React.createElement("div", { className: "shell" }, /* @__PURE__ */ React.createElement("aside", { className: "side" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, APP_CONFIG.companyName), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName)), NAV.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, className: "skel", style: { height: 34, margin: "3px 4px" } }))), /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { className: "top" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 36, width: 260 } })), /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 40, width: 220 } }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, [1, 2, 3, 4, 5, 6].map((i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "skel", style: { height: 88 } }))), /* @__PURE__ */ React.createElement("div", { className: "skel", style: { height: 280 } }), /* @__PURE__ */ React.createElement("span", { className: "sr", role: "status" }, "Loading project data"))));
   }
-  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planUnit: "write", customerArchive: "archive", customer: "write", customerPlan: "write", planTotal: "approve", deed: "write", expense: "write", contractor: "write", document: "write", reverse: "reverse", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
+  const MODAL_PERM = { shareholder: "write", sharePayment: "write", consPayment: "write", booking: "write", unit: "write", plan: "write", planUnit: "write", customerArchive: "archive", customer: "write", customerPlan: "write", planTotal: "approve", deed: "write", expense: "write", contractor: "write", document: "write", reverse: "reverse", editPayment: "editPayment", projectEdit: "write", projectImages: "write", projectImageEdit: "write" };
   function App({ repo: repoProp, auth }) {
     const repoRef = useRef(null);
     if (!repoRef.current) repoRef.current = repoProp || createRepository();
