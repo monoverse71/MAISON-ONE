@@ -1155,6 +1155,24 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     });
     return c;
   }
+  function saleAuditFilter(db) {
+    const hBk = {}, hPay = {}, hDoc = {}, hFu = {};
+    (db.share_bookings || []).forEach(function(b) {
+      if (b.archived_at) hBk[b.id] = 1;
+    });
+    (db.share_payments || []).forEach(function(p) {
+      if (hBk[p.booking_id]) hPay[p.id] = 1;
+    });
+    (db.documents || []).forEach(function(d) {
+      if (d.related_type === "booking" && hBk[d.related_id] || d.related_type === "share_payment" && hPay[d.related_id]) hDoc[d.id] = 1;
+    });
+    (db.payment_followups || []).forEach(function(f) {
+      if (f.booking_id && hBk[f.booking_id]) hFu[f.id] = 1;
+    });
+    return function(a) {
+      return a.action !== "Archived sale" && a.action !== "Restored sale" && !(a.action === "Archived record" && a.entity_type === "booking") && !(a.entity_type === "booking" && hBk[a.entity_id]) && !(a.entity_type === "share_payment" && hPay[a.entity_id]) && !(a.entity_type === "document" && hDoc[a.entity_id]) && !(a.entity_type === "payment_followup" && (hFu[a.entity_id] || hBk[a.entity_id]));
+    };
+  }
   function auditView(db, user, logs) {
     const rows = logs || db.audit_logs || [];
     if (!user || can(user, "seeRoles")) return rows;
@@ -1166,8 +1184,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     (db.customers || []).forEach(function(h) {
       if (h.archived_at) hiddenC[h.id] = 1;
     });
+    const saleOk = saleAuditFilter(db);
     return rows.filter(function(a) {
-      return a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]) && !(a.customer_id && hiddenC[a.customer_id]) && !(a.action === "Archived record" && (a.entity_type === "customer" || a.entity_type === "customer_nominee"));
+      return saleOk(a) && a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]) && !(a.customer_id && hiddenC[a.customer_id]) && !(a.action === "Archived record" && (a.entity_type === "customer" || a.entity_type === "customer_nominee"));
     }).map(function(a) {
       const acct = a.entity_type === "user";
       const action = !acct ? a.action : a.action === "Created first Super Admin" || a.action === "Invited user" ? "Created account" : a.action === "Changed user role" ? "Edited user" : a.action;
@@ -1272,6 +1291,16 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return live(p) && !(p.customer_id && (dc[p.customer_id] || dp[p.plan_id]));
       };
     },
+    /* Share Sale archive (migration 0032). A share payment counts as active only while its booking is live. Build once per calculation: const shVis = Calc.sharePayVisible(db). */
+    sharePayVisible: function(db) {
+      const ab = {};
+      (db.share_bookings || []).forEach(function(b) {
+        if (b.archived_at) ab[b.id] = 1;
+      });
+      return function(p) {
+        return live(p) && !ab[p.booking_id];
+      };
+    },
     /* What archiving a customer will do, for the confirmation dialog. Mirrors the database rules; the database function is the final authority. */
     customerArchiveImpact: function(db, id) {
       const plans = (db.construction_plans || []).filter(function(p) {
@@ -1356,14 +1385,17 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     followupToday: function(db, today) {
       const out = { shareholder: {}, customer: {}, booking: {}, plan: {} };
       if (!Array.isArray(db.payment_followups)) return out;
-      const latest = {};
+      const latest = {}, archBk = {};
+      (db.share_bookings || []).forEach(function(b) {
+        if (b.archived_at) archBk[b.id] = 1;
+      });
       db.payment_followups.forEach(function(r) {
         const k = r.target_type + ":" + (r.target_type === "share" ? r.booking_id : r.plan_id), c = latest[k];
         if (!c || Calc.followupCmp(r, c) > 0) latest[k] = r;
       });
       Object.keys(latest).forEach(function(k) {
         const r = latest[k];
-        if (!r.due_date || r.due_date !== today) return;
+        if (!r.due_date || r.due_date !== today || r.target_type === "share" && archBk[r.booking_id]) return;
         if (r.target_type === "share") {
           out.booking[r.booking_id] = 1;
           if (r.shareholder_id) out.shareholder[r.shareholder_id] = 1;
@@ -1507,13 +1539,13 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return e.amount;
       });
       const settings = db.settings[0];
-      const keys = lastMonthKeys(6), payVis = Calc.payVisible(db);
+      const keys = lastMonthKeys(6), payVis = Calc.payVisible(db), shVis = Calc.sharePayVisible(db);
       const trend = keys.map(function(k) {
         return {
           key: k,
           label: monthLabel(k),
           share: sum(db.share_payments.filter(function(p) {
-            return live(p) && monthKey(p.payment_date) === k;
+            return shVis(p) && monthKey(p.payment_date) === k;
           }), function(p) {
             return p.amount;
           }),
@@ -1552,7 +1584,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         const u = Calc.byId(db.units, id);
         return u ? u.code : "—";
       };
-      const recentPayments = db.share_payments.filter(live).map(function(p) {
+      const recentPayments = db.share_payments.filter(Calc.sharePayVisible(db)).map(function(p) {
         return { id: p.id, type: "Land Share", receipt: p.receipt_no, date: p.payment_date, who: shName2(p.shareholder_id), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
       }).concat(db.construction_payments.filter(payVis).map(function(p) {
         return { id: p.id, type: "Construction", receipt: p.receipt_no, date: p.payment_date, who: (p.customer_id ? custName(p.customer_id) : shName2(p.shareholder_id)) + " · " + (p.unit_id ? unitCode(p.unit_id) : "No unit yet"), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
@@ -3000,6 +3032,34 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       else await rpc("restore_record", { p_entity: entity, p_id: id, p_reason: reason.trim() });
       await done();
     };
+    S.archiveShareSale = async function(id, reason, requestId) {
+      guard("archive");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for archiving this sale.", "Reason needed", "VALIDATION");
+      try {
+        await rpc("archive_share_sale", { p_request_id: reqId(requestId), p_id: id, p_reason: String(reason).trim() });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return;
+        }
+        throw e;
+      }
+      await done();
+    };
+    S.restoreShareSale = async function(id, reason, requestId) {
+      guard("restore");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for restoring this sale.", "Reason needed", "VALIDATION");
+      try {
+        await rpc("restore_share_sale", { p_request_id: reqId(requestId), p_id: id, p_reason: String(reason).trim() });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return;
+        }
+        throw e;
+      }
+      await done();
+    };
     S.canRestoreTable = (table) => !!RESTORE_ENTITY[table];
     return S;
   }
@@ -3048,7 +3108,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       dateLabel: "Payment date",
       cols: [{ k: "receipt", l: "Receipt" }, { k: "date", l: "Date", t: "date" }, { k: "name", l: "Shareholder" }, { k: "booking", l: "Booking" }, { k: "amount", l: "Amount", t: "money", total: true }, { k: "method", l: "Method" }, { k: "ref", l: "Reference" }, { k: "type", l: "Entry" }, { k: "status", l: "Status", t: "badge" }],
       build: function(db) {
-        return db.share_payments.filter(live).map(function(p) {
+        return db.share_payments.filter(Calc.sharePayVisible(db)).map(function(p) {
           const sh = Calc.byId(db.shareholders, p.shareholder_id), b = Calc.byId(db.share_bookings, p.booking_id);
           return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, booking: b.code, amount: p.amount, method: methodLabel(p), ref: p.reference || "—", type: p.kind === "reversal" ? "Reversal" : "Payment", status: p.status };
         }).sort(byDateDesc("date"));
@@ -3176,8 +3236,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       noStatus: true,
       cols: [{ k: "section", l: "Section" }, { k: "item", l: "Item" }, { k: "amount", l: "Amount", t: "money" }],
       build: function(db, f) {
-        const sp = sum(db.share_payments.filter(function(p) {
-          return live(p) && inRange(p.payment_date, f);
+        const shVis = Calc.sharePayVisible(db), sp = sum(db.share_payments.filter(function(p) {
+          return shVis(p) && inRange(p.payment_date, f);
         }), function(p) {
           return p.amount;
         });
@@ -4392,7 +4452,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     if (type === "nominee") return L(db.nominees, (n) => ({ value: n.id, label: n.name + " · nominee of " + shName(db, n.shareholder_id) }));
     if (type === "unit") return L(db.units, (u) => ({ value: u.id, label: u.code }));
     if (type === "booking") return L(db.share_bookings, (b) => ({ value: b.id, label: b.code + " · " + shName(db, b.shareholder_id) }));
-    if (type === "share_payment") return L(db.share_payments, (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
+    if (type === "share_payment") return L(db.share_payments.filter(Calc.sharePayVisible(db)), (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
     if (type === "construction_payment") return L(db.construction_payments, (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
     if (type === "expense") return L(db.project_expenses, (e) => ({ value: e.id, label: e.code + " · " + e.description.slice(0, 40) }));
     return [];
@@ -4712,12 +4772,70 @@ function EditPaymentForm({ kind, id, onClose }) {
   return /* @__PURE__ */ React.createElement(Modal, { title: "Edit payment " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Save correction" }) }, /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "The old values are kept in the revision history. The receipt number does not change and the receipt will show the corrected information."), conflict && /* @__PURE__ */ React.createElement(Note, { tone: "bad" }, /* @__PURE__ */ React.createElement("b", null, "This payment was changed by someone else."), " The latest values are loaded when you press the button. Nothing of yours was saved. ", /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: reload }, "Load latest values")), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Amount", req: true, err: errs.amount }, /* @__PURE__ */ React.createElement(Money, { value: f.amount, onChange: set("amount"), "data-testid": "ep-amount" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", req: true, err: errs.payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.payment_date, onChange: set("payment_date"), max: TODAY, "data-testid": "ep-date" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method" }, /* @__PURE__ */ React.createElement(Sel, { value: f.method, onChange: set("method"), options: METHODS, placeholder: "Select method (optional)", "data-testid": "ep-method" })), f.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details" }, /* @__PURE__ */ React.createElement(Txt, { value: f.method_details || "", onChange: set("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Transaction / cheque reference" }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference, onChange: set("reference"), "data-testid": "ep-ref" })), /* @__PURE__ */ React.createElement(Field, { label: "Note", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.note, onChange: set("note") })), /* @__PURE__ */ React.createElement(Field, { label: "Reason for the correction", req: true, full: true, err: errs.reason || errs.nochange }, /* @__PURE__ */ React.createElement(Area, { value: f.reason, onChange: set("reason"), placeholder: "For example: wrong amount typed, bank slip shows 40,000", "data-testid": "ep-reason" }))), rows.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "sumbox card", "data-testid": "ep-preview", style: { padding: "4px 14px", marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("b", null, "Before → after")), rows.map((k) => /* @__PURE__ */ React.createElement("div", { className: "sumrow", key: k }, /* @__PURE__ */ React.createElement("span", null, EDIT_FIELD_LABEL[k]), /* @__PURE__ */ React.createElement("span", null, dispVal(k, imp.prev[k], imp.prev), " → ", /* @__PURE__ */ React.createElement("b", null, dispVal(k, imp.next[k], imp.next))))), imp.due != null && !isNaN(imp.next.amount) && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due after this edit"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(roundMoney(imp.due - imp.next.amount))))), needs.over && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This edit puts the account ", fmtMoney(imp.overpay), " over its total."), " It will show as an overpayment.", chk("over", "I confirm this is intended")), needs.dup && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Possible duplicate."), " Another payment with the same amount, date and reference exists (", imp.duplicate.receipt_no, ").", chk("dup", "I confirm this is a separate payment")), needs.deed && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Finalized Deed of Agreement."), " Its saved paid-to-date figure will NOT change and will no longer match the payments. The impact is recorded with this correction.", chk("deed", "I understand and want to continue")), errs.confirm && /* @__PURE__ */ React.createElement("div", { className: "err", role: "alert" }, errs.confirm), hist.length > 0 && /* @__PURE__ */ React.createElement("details", { style: { marginTop: 10 }, "data-testid": "ep-history" }, /* @__PURE__ */ React.createElement("summary", null, "Revision history (", hist.length, ")"), hist.map((r) => /* @__PURE__ */ React.createElement("div", { className: "sumbox card", key: r.id, style: { padding: "6px 14px", marginTop: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, "Revision ", r.revision_no), " · ", fmtDateTime(r.edited_at), " · ", userName(db, r.edited_by)), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Reason: ", r.reason), revisionChanges(r).map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "hint" }, t))))));
 }
 
+  const newReq = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : void 0;
+function ArchivedSalesPanel() {
+  const { db, user, open, confirm, run, S } = useApp();
+  const [sel, setSel] = useState(null);
+  const rows = useMemo(() => (db.share_bookings || []).filter((b) => b.archived_at).map((b) => ({ id: b.id, b, s: Calc.bookingSummary(db, b), name: shName(db, b.shareholder_id) })).sort((a, c) => String(c.b.archived_at).localeCompare(String(a.b.archived_at))), [db]);
+  const settings = db.settings[0], sold = Calc.sharesSold(db);
+  const restore = async (r) => {
+    const holder = Calc.byId(db.shareholders, r.b.shareholder_id), warn = [];
+    if (holder && holder.archived_at) warn.push("The shareholder is archived: restore the shareholder first.");
+    if (sold + r.b.quantity > settings.total_shares) warn.push("Only " + Math.max(0, settings.total_shares - sold) + " share(s) are available now and this sale needs " + r.b.quantity + ".");
+    const a = await confirm({ title: "Restore sale " + r.b.code + "?", message: "The sale returns with its original " + r.b.quantity + " share(s), " + r.s.payments.length + " payment row(s) (" + fmtMoney(r.s.paid) + " received, " + fmtMoney(r.s.due) + " due) and its documents. No payment is created or changed. The restore is recorded in the audit log." + (warn.length ? " " + warn.join(" ") : ""), confirmLabel: "Restore sale", reason: true });
+    if (a.ok) run(() => S.restoreShareSale(r.id, a.reason, newReq()), "Sale restored");
+  };
+  const cols = [
+    { key: "code", label: "Booking", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.b.code) },
+    { key: "name", label: "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(ShLink, { id: r.b.shareholder_id }) },
+    { key: "q", label: "Shares", align: "r", val: (r) => r.b.quantity, render: (r) => r.b.quantity },
+    { key: "g", label: "Grand total", align: "r", val: (r) => r.s.grand, render: (r) => M(r.s.grand) },
+    { key: "pd", label: "Paid (kept)", align: "r", val: (r) => r.s.paid, render: (r) => MIn(r.s.paid) },
+    { key: "du", label: "Due", align: "r", val: (r) => r.s.due, render: (r) => MDue(r.s.due) },
+    { key: "n", label: "Payments", align: "r", val: (r) => r.s.payments.length, render: (r) => r.s.payments.length },
+    { key: "at", label: "Archived", val: (r) => r.b.archived_at, render: (r) => /* @__PURE__ */ React.createElement("div", null, fmtDateTime(r.b.archived_at), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "by ", userName(db, r.b.archived_by))) },
+    { key: "why", label: "Reason", render: (r) => r.b.archive_reason || "—" },
+    { key: "actions", label: "Actions", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: (e) => {
+      e.stopPropagation();
+      setSel(sel === r.id ? null : r.id);
+    } }, sel === r.id ? "Hide payments" : "View payments"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", onClick: (e) => {
+      e.stopPropagation();
+      restore(r);
+    } }, "Restore")) }
+  ];
+  const cur = rows.find((r) => r.id === sel);
+  const pcols = [
+    { key: "receipt", label: "Receipt", render: (p) => /* @__PURE__ */ React.createElement("button", { type: "button", className: "link mono", onClick: () => open("receipt", { kind: "share", id: p.id }) }, p.receipt_no, p.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "revpill", style: { marginLeft: 6 } }, "Rev " + p.revision_no)) },
+    { key: "date", label: "Date", val: (p) => p.payment_date, render: (p) => fmtDate(p.payment_date) },
+    { key: "amount", label: "Amount", align: "r", val: (p) => p.amount, render: (p) => M(p.amount) },
+    { key: "method", label: "Method", render: (p) => p.method || "—" },
+    { key: "ref", label: "Reference", render: (p) => p.reference || "—" },
+    { key: "kind", label: "Entry", render: (p) => p.kind === "reversal" ? "Reversal" : "Payment" },
+    { key: "status", label: "Status", render: (p) => /* @__PURE__ */ React.createElement(Status, { v: p.status }) }
+  ];
+  return /* @__PURE__ */ React.createElement(
+    React.Fragment,
+    null,
+    /* @__PURE__ */ React.createElement(PageHead, { title: "Archived sales", sub: "Sales archived with their payments kept. They are excluded from every active total, report, ledger and search. Only a Super Admin sees this page." }),
+    /* @__PURE__ */ React.createElement("div", { "data-testid": "archived-sales" }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows, rowKey: (r) => r.id, pageSize: 10, initialSort: null, empty: { title: "No archived sales", text: "Archive a sale from the Share sales tab. Its payments stay on record.", icon: "archive" } })),
+    cur && /* @__PURE__ */ React.createElement("div", { className: "card", style: { marginTop: 16 }, "data-testid": "archived-sale-payments" }, /* @__PURE__ */ React.createElement("div", { className: "hint", style: { padding: "12px 16px" } }, "Original payment history of ", cur.b.code, " (" + cur.s.payments.length + " row(s), net " + fmtMoney(cur.s.paid) + ")"), /* @__PURE__ */ React.createElement(DataTable, { cols: pcols, rows: cur.s.payments.slice().sort((a, c) => a.payment_date.localeCompare(c.payment_date) || a.receipt_no.localeCompare(c.receipt_no)), rowKey: (p) => p.id, pageSize: 20, initialSort: null }))
+  );
+}
+function SalesPage(props) {
+  const { db, user, S } = useApp();
+  const [tab, setTab] = useState("active");
+  const canAS = !!(S.archiveShareSale && S.restoreShareSale && can(user, "archive") && can(user, "restore"));
+  if (!canAS) return /* @__PURE__ */ React.createElement(SalesPageActive, props);
+  const n = (db.share_bookings || []).filter((b) => b.archived_at).length;
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Tabs, { tabs: [{ id: "active", label: "Share sales" }, { id: "archived", label: "Archived sales", count: n }], value: tab, onChange: setTab }), tab === "active" ? /* @__PURE__ */ React.createElement(SalesPageActive, props) : /* @__PURE__ */ React.createElement(ArchivedSalesPanel, null));
+}
+
   const MODAL_REGISTRY = { customerArchive: CustomerArchiveForm, planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, deed: DeedForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, editPayment: EditPaymentForm, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
-    const out = [], payVis = Calc.payVisible(db);
+    const out = [], payVis = Calc.payVisible(db), shVis = Calc.sharePayVisible(db);
     const add = (type, p) => {
-      if (!live(p) || type === "cons" && !payVis(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
+      if (!live(p) || type === "cons" && !payVis(p) || type === "share" && !shVis(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
       const b = type === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = type === "cons" ? Calc.byId(db.units, p.unit_id) : null;
       out.push({ id: p.id, type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, customer_id: p.customer_id || null, who: type === "cons" ? buyerName(db, p) : shName(db, p.shareholder_id), target: type === "share" ? b ? b.code : "—" : u ? u.code : (Calc.byId(db.construction_plans, p.plan_id) || {}).code || "—", amount: p.amount, method: methodLabel(p), reference: p.reference || "—", status: p.kind === "reversal" ? "Reversal" : p.status, canReverse: p.kind === "payment" && p.status === "Posted" });
     };
@@ -4881,7 +4999,7 @@ function EditPaymentForm({ kind, id, onClose }) {
     const bookingIds = c.bookings.map((x) => x.b.id), unitIds = c.units.map((u) => u.id);
     const nomIds = db.nominees.filter((n) => n.shareholder_id === id).map((n) => n.id);
     const docs = db.documents.filter((d) => live(d) && (d.related_type === "shareholder" && d.related_id === id || d.related_type === "nominee" && nomIds.indexOf(d.related_id) >= 0 || d.related_type === "booking" && bookingIds.indexOf(d.related_id) >= 0 || d.related_type === "unit" && unitIds.indexOf(d.related_id) >= 0 || (d.related_type === "share_payment" || d.related_type === "construction_payment") && ledger.some((l) => l.id === d.related_id))).sort(byDateDesc("uploaded_at"));
-    const logs = db.audit_logs.filter((a) => a.shareholder_id === id).sort((a, b) => b.at.localeCompare(a.at));
+    const logs = (can(user, "seeRoles") ? db.audit_logs : db.audit_logs.filter(saleAuditFilter(db))).filter((a) => a.shareholder_id === id).sort((a, b) => b.at.localeCompare(a.at));
     const tabs = [{ id: "overview", label: "Overview" }, { id: "bookings", label: "Share bookings", count: c.bookings.length }, { id: "units", label: "Units", count: c.units.length }, { id: "construction", label: "Construction", count: c.plans.length }, { id: "payments", label: "Payments", count: ledger.length }, { id: "documents", label: "Documents", count: docs.length }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity history", count: logs.length }];
     const dcl = (i) => {
       const d = i ? Calc.byId(db.documents, i) : null;
@@ -5008,7 +5126,7 @@ function EditPaymentForm({ kind, id, onClose }) {
     ].map((col) => Object.assign({}, col, { sortValue: void 0 }));
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("customers") }, "All customers")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("h1", { style: { fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 } }, c.full_name), /* @__PURE__ */ React.createElement(Status, { v: c.status })), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono" + (fu.customer[c.id] ? " fu-id" : "") }, c.code), fu.customer[c.id] && /* @__PURE__ */ React.createElement(FuPill, null), c.phone ? " · " : "", /* @__PURE__ */ React.createElement("span", { className: "num" }, c.phone), c.profession ? " · " + c.profession : "", c.designation ? ", " + c.designation : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archive }, "Archive Customer & Related Records")))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total construction contribution", value: fmtMoney(cs.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(cs.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: cs.due > 4e-3 ? "due" : void 0, value: fmtMoney(cs.due) })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement(Tabs, { tabs, value: tab, onChange: setTab }), tab === "plans" && /* @__PURE__ */ React.createElement(DataTable, { cols: planCols, rows: cs.plans, pageSize: 10, onRowClick: (x) => go("construction", { planId: x.p.id }), empty: { title: "No construction plan yet", text: "Create a plan to set the total this customer will pay. A unit is not needed now.", icon: "wrench", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan") } }), tab === "payments" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(LedgerTable, { rows: ledger, showWho: false, pageSize: 10, empty: { title: "No payments yet", text: "Construction payments for this customer will appear here.", icon: "card" } })), tab === "overview" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Email"), /* @__PURE__ */ React.createElement("dd", null, c.email || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, c.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, c.address || "—"), /* @__PURE__ */ React.createElement("dt", null, "Profession"), /* @__PURE__ */ React.createElement("dd", null, c.profession || "—"), /* @__PURE__ */ React.createElement("dt", null, "Designation"), /* @__PURE__ */ React.createElement("dd", null, c.designation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Registered"), /* @__PURE__ */ React.createElement("dd", null, c.registration_date ? fmtDate(c.registration_date) : "—"), /* @__PURE__ */ React.createElement("dt", null, "Remarks"), /* @__PURE__ */ React.createElement("dd", null, c.remarks || "—"))), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nom ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nom.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nom.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", null, nom.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nom.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nom.address || "—")), /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 12 } }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit nominee"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archiveNom }, "Archive nominee"))) : /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "No nominee recorded", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("customer", { customer: c }) }, "Add nominee") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
   }
-  function SalesPage({ newBooking }) {
+  function SalesPageActive({ newBooking }) {
     const { db, user, go, open, confirm, run, S } = useApp();
     const w = can(user, "write");
     const fu = useFollowupToday();
@@ -5025,6 +5143,11 @@ function EditPaymentForm({ kind, id, onClose }) {
     const rows = all.filter((r) => (flt === "all" || r.s.status === flt) && (!q.trim() || (r.name + " " + r.code + " " + r.b.reference_person).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
     const totals = { value: sum(all, (r) => r.s.grand), paid: sum(all, (r) => r.s.paid), due: sum(all, (r) => r.s.due) };
     const archive = async (r) => {
+      if (S.archiveShareSale) {
+        const sale = await confirm({ title: "Archive sale " + r.code + "?", message: r.s.payments.length + " payment row(s) (" + fmtMoney(r.s.paid) + " received) and " + fmtMoney(r.s.due) + " due leave every active total, report, ledger, search and the dashboard, and " + r.b.quantity + " share(s) are released. Nothing is deleted: payments, receipts, revisions and documents are kept, " + r.name + " stays a shareholder, and a Super Admin can restore the sale. This does not record a refund.", confirmLabel: "Archive sale", danger: true, reason: true });
+        if (sale.ok) run(() => S.archiveShareSale(r.id, sale.reason, typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : void 0), "Sale archived");
+        return;
+      }
       const a = await confirm({ title: "Archive booking " + r.code + "?", message: "Only bookings with no net payments can be archived. The record stays in the audit trail.", confirmLabel: "Archive", danger: true, reason: true });
       if (a.ok) run(() => S.archiveBooking(r.id, a.reason), "Booking archived");
     };
@@ -5048,7 +5171,7 @@ function EditPaymentForm({ kind, id, onClose }) {
         { label: "View shareholder", icon: "user", onClick: () => go("profile", { id: r.b.shareholder_id }) },
         { label: "View payments", icon: "card", onClick: () => go("profile", { id: r.b.shareholder_id, tab: "payments" }) },
         { label: "Upload document", icon: "upload", hidden: !w, onClick: () => open("document", { relatedType: "booking", relatedId: r.id, docType: "Booking Document" }) },
-        { label: "Archive booking", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
+        { label: S.archiveShareSale ? "Archive sale" : "Archive booking", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
       ] })) }
     ];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Share sales", sub: "Land share bookings and what has been collected against each. Construction money is not mixed in here.", flow: "in", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("booking", {}) }, "New share booking") }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: sold + " of " + settings.total_shares, sub: settings.total_shares - sold + " still available" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total booked value", value: fmtCompact(totals.value), title: fmtMoney(totals.value), sub: "After discounts" }), /* @__PURE__ */ React.createElement(Stat, { label: "Collected", tone: "in", value: fmtCompact(totals.paid), title: fmtMoney(totals.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Due", tone: totals.due > 4e-3 ? "due" : void 0, value: fmtCompact(totals.due), title: fmtMoney(totals.due), sub: "Not yet collected" })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search booking, shareholder, reference" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(
@@ -5393,7 +5516,7 @@ function EditPaymentForm({ kind, id, onClose }) {
     const restore = async (r) => {
       const a = await confirm({ title: "Restore " + r.label + "?", message: "The record returns to the normal lists and the restore is recorded in the audit log.", confirmLabel: "Restore", reason: true });
       if (!a.ok) return;
-      await run(() => S.restoreRecord(r.table, r.rid, a.reason), "Record restored");
+      await run(() => r.table === "share_bookings" && S.restoreShareSale ? S.restoreShareSale(r.rid, a.reason) : S.restoreRecord(r.table, r.rid, a.reason), "Record restored");
     };
     const READY = [["Sign-in and roles", "users table maps to Supabase Auth plus a profiles.role column. Role checks already run in the service layer (can()).", "Wire up"], ["Row level security", "One policy per table by role: Admin all, Accountant read and insert, Viewer read. Ledger tables get no update or delete policy.", "Write policies"], ["File storage", "documents.storage_path points at a private bucket. MockStorage is the only class to swap.", "Create bucket"], ["Audit log", "audit_logs rows are written in the same batch as the change. In Postgres, run the batch as one RPC and block update/delete with a trigger.", "Add trigger"], ["Soft delete", "archived_at, archived_by and archive_reason exist on every table. There is no hard delete anywhere.", "Ready"], ["Reversals", "Payments and expenses are append-only. Corrections add a negative entry that points at the original.", "Ready"], ["Backups and recovery", "Enable daily backups and point-in-time recovery in the Supabase project settings.", "Configure"]];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Settings", sub: auth ? "Project identity and share configuration." : "Project identity, share configuration, access and how this prototype maps onto the future database." }), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Project identity", sub: "Version 1 manages one project. Names are read from here, not fixed in the pages." }, /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Company name", req: true, err: errs.company_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.company_name, onChange: set("company_name"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Project name", req: true, err: errs.project_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.project_name, onChange: set("project_name"), disabled: !admin }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center" } }, !admin && /* @__PURE__ */ React.createElement("span", { className: "hint" }, ADMIN_WORD === "Admin" ? "Only an Admin can change these." : "You cannot change these."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, disabled: !admin, onClick: saveIdentity }, "Save identity"))), /* @__PURE__ */ React.createElement(Card, { title: "Share Configuration", sub: "Total shares and the default (reference) price per share. A new booking is pre-filled with this price, but it can be changed per booking and is saved with that booking. Changing the default never alters existing bookings." }, priceNum <= 0 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "The default share price has not been configured yet. Enter it below when it is finalised. Until then, bookings can still be created by typing a price on each booking."), /* @__PURE__ */ React.createElement("div", { className: "frm", style: { marginTop: priceNum <= 0 ? 10 : 0 } }, /* @__PURE__ */ React.createElement(Field, { label: "Total shares in the project", req: true, err: errs.total_shares, hint: sold + " sold · " + Math.max(0, totalNum - sold) + " available" }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "1", value: f.total_shares, onChange: (e) => set("total_shares")(e.target.value), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Default share price (per share)", req: true, err: errs.default_share_price, hint: priceNum > 0 ? "Total share value " + fmtMoney(totalNum * priceNum) : "Not configured (৳0)" }, /* @__PURE__ */ React.createElement(Money, { value: f.default_share_price, onChange: set("default_share_price"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Share name / type" }, /* @__PURE__ */ React.createElement(Txt, { value: f.share_name, onChange: set("share_name"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Area, { rows: 2, value: f.share_remarks, onChange: set("share_remarks"), disabled: !admin }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center" } }, !admin && /* @__PURE__ */ React.createElement("span", { className: "hint" }, ADMIN_WORD === "Admin" ? "Only an Admin can change these." : "You cannot change these."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy: busy2, disabled: !admin, onClick: save }, "Save share configuration"))), /* @__PURE__ */ React.createElement(Card, { title: auth ? "Your account" : "Signed in as", sub: auth ? "Signed in as " + user.name + (can(user, "seeRoles") ? " (" + user.role + ")" : "") + "." : "Switch role to see what each one can do." }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 12 } }, !auth && /* @__PURE__ */ React.createElement(Field, { label: "Signed in as" }, /* @__PURE__ */ React.createElement(Sel, { value: user.id, onChange: setUserId, options: db.users.map((u) => ({ value: u.id, label: u.name + " · " + u.role })) })), !auth && /* @__PURE__ */ React.createElement("div", { className: "tbl-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "tbl" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Role"), /* @__PURE__ */ React.createElement("th", null, "Add records"), /* @__PURE__ */ React.createElement("th", null, "Reverse"), /* @__PURE__ */ React.createElement("th", null, "Approve"), /* @__PURE__ */ React.createElement("th", null, "Archive"), /* @__PURE__ */ React.createElement("th", null, "Settings"))), /* @__PURE__ */ React.createElement("tbody", null, (auth ? DB_ROLES : Object.keys(PERMS)).map((role) => /* @__PURE__ */ React.createElement("tr", { key: role }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("b", null, role)), ["write", "reverse", "approve", "archive", "settings"].map((p) => /* @__PURE__ */ React.createElement("td", { key: p }, PERMS[role].indexOf(p) >= 0 ? /* @__PURE__ */ React.createElement("span", { className: "badge t-ok" }, "Yes") : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "No"))))))))))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement(Card, { title: auth ? "Database overview" : "Database readiness", sub: auth ? "Records currently held in each database table." : "Storage in use: " + repoKind + ". Nothing is saved between visits in this prototype." }, /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Tables and current rows"), /* @__PURE__ */ React.createElement("div", { className: "tbl-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "tbl" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "PostgreSQL table"), /* @__PURE__ */ React.createElement("th", { className: "r" }, "Rows"))), /* @__PURE__ */ React.createElement("tbody", null, TABLE_MAP.map((t) => /* @__PURE__ */ React.createElement("tr", { key: t[0] }, /* @__PURE__ */ React.createElement("td", { className: "mono" }, t[1]), /* @__PURE__ */ React.createElement("td", { className: "r" }, (db[t[0]] || []).length))))))), !auth && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Supabase checklist"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, READY.map((r) => /* @__PURE__ */ React.createElement("div", { key: r[0], style: { display: "grid", gap: 2 } }, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("b", null, r[0]), /* @__PURE__ */ React.createElement("span", { className: "badge " + (r[2] === "Ready" ? "t-ok" : "t-warn") }, r[2])), /* @__PURE__ */ React.createElement("span", { className: "muted" }, r[1]))))))), (!auth || canRestore) && /* @__PURE__ */ React.createElement(Card, { title: "Archived records", sub: "Archived items are hidden from lists and kept for the audit trail.", flush: true }, /* @__PURE__ */ React.createElement(DataTable, { rows: archived, pageSize: 6, empty: { title: "Nothing archived", text: "Archived shareholders, bookings and documents will be listed here.", icon: "archive" }, cols: [{ key: "table", label: "Record type", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.table) }, { key: "label", label: "Record" }, { key: "at", label: "Archived", render: (r) => fmtDateTime(r.at) }, { key: "by", label: "By" }, { key: "reason", label: "Reason" }].concat(canRestore ? [{ key: "restore", label: "", render: (r) => r.superseded || !S.canRestoreTable(r.table) ? /* @__PURE__ */ React.createElement("span", { className: "muted" }, "—") : /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => restore(r) }, "Restore") }] : []) })));
@@ -6304,7 +6427,7 @@ PRINT_DOCS.shList = {
       add("Customers", (db.customers || []).filter((c) => live(c) && has(c.full_name + " " + c.code + " " + c.phone + " " + c.nid)).map((c) => ({ key: c.id, label: c.full_name, sub: c.code + " · " + (c.phone || ""), act: () => go("customer", { id: c.id }) })));
       add("Units", db.units.filter((u) => live(u) && has(u.code)).map((u) => ({ key: u.id, label: "Unit " + u.code, sub: u.shareholder_id ? shName(db, u.shareholder_id) : "Available", act: () => go("units") })));
       add("Share bookings", db.share_bookings.filter((b) => live(b) && has(b.code)).map((b) => ({ key: b.id, label: b.code, sub: shName(db, b.shareholder_id), act: () => go("profile", { id: b.shareholder_id, tab: "bookings" }) })));
-      add("Payments", db.share_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "share", id: p.id }) })).concat(db.construction_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "cons", id: p.id }) }))));
+      add("Payments", db.share_payments.filter(((v) => (p) => v(p) && has(p.receipt_no + " " + p.reference))(Calc.sharePayVisible(db))).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "share", id: p.id }) })).concat(db.construction_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "cons", id: p.id }) }))));
       add("Contractors and suppliers", db.contractors.filter((c) => live(c) && has(c.name + " " + c.trade)).map((c) => ({ key: c.id, label: c.name, sub: c.trade, act: () => go("expenses", { tab: "contractors" }) })));
       add("Expenses", db.project_expenses.filter((e) => live(e) && has(e.code + " " + e.description)).map((e) => ({ key: e.id, label: e.code, sub: e.description, act: () => go("expenses") })));
       add("Documents", db.documents.filter((d) => live(d) && has(d.file_name + " " + d.code)).map((d) => ({ key: d.id, label: d.file_name, sub: d.code, act: () => open("docView", { id: d.id }) })));
