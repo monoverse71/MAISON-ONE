@@ -1036,7 +1036,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   function sbCheckProfile(p) {
     if (!p) return { ok: false, code: "NO_PROFILE", message: "This sign-in has no active profile in the system, so access is not allowed. Ask the project owner to set up your account." };
     if (p.is_active !== true) return { ok: false, code: "ACCOUNT_INACTIVE", message: "This account has been deactivated. Ask the project owner to reactivate it." };
-    if (p.role !== "Super Admin") return { ok: false, code: "ROLE_NOT_ALLOWED", message: "This account does not have a role that can use the app. Ask the project owner to check your account." };
+    if (p.role !== "Super Admin" && p.role !== "Project Author") return { ok: false, code: "ROLE_NOT_ALLOWED", message: "This account does not have a role that can use the app. Ask the project owner to check your account." };
     return { ok: true };
   }
   function sbAuthMessage(e) {
@@ -1110,12 +1110,12 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       return this.snapshot();
     }
     setOmView(v) {
-      this.omView = v === "public" ? v : "combined";
+      this.omView = v === "public" || v === "pa" ? v : "combined";
     }
     snapshot() {
       const s = JSON.parse(JSON.stringify(this.tables || {})), om = this.om;
       if (!om) return s;
-      const c = om.capability || {}, v = this.omView === "public" ? this.omView : "combined";
+      const c = om.capability || {}, v = this.omView === "public" || this.omView === "pa" ? this.omView : "combined";
       s.omCap = { version: c.version, m2: !!c.m2_rpcs, m3: !!c.m3_routers, m4: !!c.m4_guard, creation: !!c.creation_enabled };
       s.omCap.ready = s.omCap.m2 && s.omCap.m3 && s.omCap.m4;
       s.omCap.canCreate = s.omCap.ready && s.omCap.creation;
@@ -1172,8 +1172,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   const live = function(r) {
     return !r.archived_at;
   };
-  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles", "editPayment"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
-  const DB_ROLES = ["Super Admin"];
+  const PERMS = { "Super Admin": ["write", "reverse", "approve", "archive", "archiveShareholder", "restore", "settings", "users", "seeRoles", "editPayment"], "Project Author": ["write", "reverse", "approve", "settings", "users", "editPayment"], Admin: ["write", "reverse", "approve", "archive", "archiveShareholder", "settings", "seeRoles"], Accountant: ["write", "reverse"], Viewer: [] };
+  const DB_ROLES = ["Super Admin", "Project Author"];
   function can(user, perm) {
     return !!user && (PERMS[user.role] || []).indexOf(perm) >= 0;
   }
@@ -3096,7 +3096,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     };
     S.canRestoreTable = (table) => !!RESTORE_ENTITY[table];
     /* ---- Phase 2A C1 (Super Admin only). Every private RPC below is reachable only through a row tagged _om, the explicit Only Me choice, or the Integrity
-       screen, and each requires db.omCap, which exists only for a Super Admin whose om_read_all call succeeded. No other role can reach them. ---- */
+       screen, and each requires db.omCap, which exists only for a Super Admin whose om_read_all call succeeded. A Project Author can never reach them. ---- */
     const OM_BUCKET = "om-receipts";
     /* every private RPC goes through omRpc: a refusal that means "you are no longer a Super Admin" or "a figure changed" refreshes the screen,
        which drops the private data from memory (the repository only reads it for a current Super Admin) and clears the saved upload note. */
@@ -4448,7 +4448,7 @@ function OmField({ f, set, kind, parentId }) {
     S.omForget();
     setPend(null);
   };
-  return /* @__PURE__ */ React.createElement("div", { className: "field full", style: { gridColumn: "1 / -1" }, "data-testid": "om-visibility" }, /* @__PURE__ */ React.createElement("div", { className: "lbl", id: "om-vis-l" }, "Who can see this payment?"), /* @__PURE__ */ React.createElement("div", { role: "radiogroup", "aria-labelledby": "om-vis-l", style: { display: "inline-flex", gap: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": !only, "data-testid": "om-vis-everyone", className: "btn" + (!only ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("everyone") }, "Everyone"), /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": only, "data-testid": "om-vis-onlyme", className: "btn" + (only ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("only_me") }, "Only Me")), only && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, /* @__PURE__ */ React.createElement("span", { "data-testid": "om-note" }, "Only you (Super Admin) can see this payment, its receipt and its file. No other user can.")), only && !t && !f.file && pend && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume", className: "muted", style: { fontSize: 13 } }, "An earlier upload is waiting: ", pend.file_name, ". ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-use", onClick: resume }, "Use it"), " ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-discard", onClick: discard }, "Discard")), only && rmsg && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume-msg", className: "muted", style: { fontSize: 13 } }, rmsg), only && t && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-ticket-state", className: "muted", style: { fontSize: 13 } }, t.state === "uploading" ? "Uploading…" : t.state === "uploaded" ? "Uploaded, not yet saved" + (t.name ? ": " + t.name : "") : t.msg, t.state !== "uploading" && /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", style: { marginLeft: 8 }, "data-testid": "om-ticket-cancel", onClick: () => {
+  return /* @__PURE__ */ React.createElement("div", { className: "field full", style: { gridColumn: "1 / -1" }, "data-testid": "om-visibility" }, /* @__PURE__ */ React.createElement("div", { className: "lbl", id: "om-vis-l" }, "Who can see this payment?"), /* @__PURE__ */ React.createElement("div", { role: "radiogroup", "aria-labelledby": "om-vis-l", style: { display: "inline-flex", gap: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": !only, "data-testid": "om-vis-everyone", className: "btn" + (!only ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("everyone") }, "Everyone"), /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": only, "data-testid": "om-vis-onlyme", className: "btn" + (only ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("only_me") }, "Only Me")), only && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, /* @__PURE__ */ React.createElement("span", { "data-testid": "om-note" }, "Only you (Super Admin) can see this payment. Project Authors will not see it, any number it uses, or its file.")), only && !t && !f.file && pend && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume", className: "muted", style: { fontSize: 13 } }, "An earlier upload is waiting: ", pend.file_name, ". ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-use", onClick: resume }, "Use it"), " ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-discard", onClick: discard }, "Discard")), only && rmsg && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume-msg", className: "muted", style: { fontSize: 13 } }, rmsg), only && t && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-ticket-state", className: "muted", style: { fontSize: 13 } }, t.state === "uploading" ? "Uploading…" : t.state === "uploaded" ? "Uploaded, not yet saved" + (t.name ? ": " + t.name : "") : t.msg, t.state !== "uploading" && /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", style: { marginLeft: 8 }, "data-testid": "om-ticket-cancel", onClick: () => {
     if (t.ticket_id) S.omCancelTicket(t.ticket_id);
     set("ticket")(null);
     set("file")(null);
@@ -4459,11 +4459,12 @@ function OmViewBar() {
   if (!db.omCap || !setOmView) return null;
   const v = db.omView || "combined";
   const b = (id, label, tid) => /* @__PURE__ */ React.createElement("button", { type: "button", "data-testid": tid, "aria-pressed": v === id, className: "btn btn-sm" + (v === id ? " btn-primary" : ""), onClick: () => setOmView(id) }, label);
-  return /* @__PURE__ */ React.createElement("div", { "data-testid": "om-viewbar", role: "group", "aria-label": "Only Me view", style: { display: "inline-flex", gap: 4, marginRight: 8 } }, b("combined", "Combined", "om-view-combined"), b("public", "Show Everyone only", "om-view-public"));
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "om-viewbar", role: "group", "aria-label": "Only Me view", style: { display: "inline-flex", gap: 4, marginRight: 8 } }, b("combined", "Combined", "om-view-combined"), b("public", "Show Everyone only", "om-view-public"), b("pa", "View as Project Author", "om-view-pa"));
 }
 function OmBanner() {
   const { db } = useApp();
   if (!db.omCap) return null;
+  if (db.omView === "pa") return /* @__PURE__ */ React.createElement("div", { role: "status", "data-testid": "om-banner-pa", className: "note warn", style: { margin: "0 0 12px", padding: "8px 12px" } }, "Simulating Project Author: Only Me payments are hidden. Changes you save here are Everyone payments.");
   if (db.omView === "public") return /* @__PURE__ */ React.createElement("div", { role: "status", "data-testid": "om-banner-public", className: "note info", style: { margin: "0 0 12px", padding: "8px 12px" } }, "Showing Everyone only. Only Me payments are not included in these figures.");
   return null;
 }
@@ -4482,7 +4483,7 @@ function IntegrityPage() {
   useEffect(() => {
     load();
   }, []);
-  if (!db.omCap) return /* @__PURE__ */ React.createElement(Empty, { icon: "shield", title: "Not available", text: "This screen is for the Super Admin." });
+  if (!db.omCap || db.omView === "pa") return /* @__PURE__ */ React.createElement(Empty, { icon: "shield", title: "Not available", text: "This screen is for the Super Admin." });
   const sev = (s) => /* @__PURE__ */ React.createElement("span", { className: "badge " + (s === "error" ? "t-bad" : s === "warn" ? "t-warn" : "t-ok") }, s);
   const doAck = async () => {
     if (String(reason).trim().length < 3) return;
