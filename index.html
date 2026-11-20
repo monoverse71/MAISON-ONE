@@ -1090,10 +1090,63 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       });
       out.units.sort((a, b) => a.floor - b.floor || String(a.unit_no).localeCompare(String(b.unit_no), void 0, { numeric: true }));
       this.tables = out;
+      /* Phase 2A C1: only a signed-in Super Admin ever asks for private data; anyone else makes no private call at all. */
+      this.om = null;
+      this.omX = null;
+      this.omAudit = [];
+      const me = ctx.session && ctx.session.user, meRow = me && out.users ? out.users.filter((u) => u.id === me.id)[0] : null;
+      if (meRow && meRow.role === "Super Admin") {
+        try {
+          const r = await this.client.rpc("om_read_all");
+          if (!r.error && r.data && r.data.capability && r.data.capability.m2_rpcs) {
+            this.om = r.data;
+            const mp = (k, rows) => Array.isArray(rows) && SB_MAP[k] ? rows.map((x) => SB_MAP[k](x, ctx)) : [];
+            this.omX = { shareholders: mp("shareholders", r.data.shareholders), nominees: mp("nominees", r.data.nominees), share_bookings: mp("share_bookings", r.data.share_bookings), construction_plans: mp("construction_plans", r.data.construction_plans) };
+            try {
+              const ar = await this.client.rpc("om_read_audit", { p_limit: 1000, p_before: null }), nm = {};
+              (out.users || []).forEach((u) => { nm[u.id] = u; });
+              this.omAudit = !ar.error && Array.isArray(ar.data) ? ar.data.map((a) => ({ id: "om:" + a.id, at: a.at, user_id: a.actor, user_name: nm[a.actor] ? nm[a.actor].name : "Super Admin", role: nm[a.actor] ? nm[a.actor].role : "Super Admin", action: a.action, entity_type: a.entity_type, entity_id: a.entity_id, summary: a.summary, shareholder_id: a.entity_type === "shareholder_om" ? a.entity_id : null, customer_id: null, reason: a.reason, before: a.before, after: a.after, _om: true })) : [];
+            } catch (e2) {
+              this.omAudit = [];
+            }
+          }
+        } catch (e) {
+          this.om = null;
+        }
+      } else {
+        /* not a Super Admin (never one, or demoted): drop any remembered private upload note on this device */
+        try {
+          Object.keys(localStorage).filter((k) => k.indexOf("anh_om_stage:") === 0).forEach((k) => localStorage.removeItem(k));
+        } catch (e) {
+        }
+      }
       return this.snapshot();
     }
+    setOmView(v) {
+      this.omView = v === "public" || v === "pa" ? v : "combined";
+    }
     snapshot() {
-      return JSON.parse(JSON.stringify(this.tables || {}));
+      const s = JSON.parse(JSON.stringify(this.tables || {})), om = this.om;
+      if (!om) return s;
+      const c = om.capability || {}, v = this.omView === "public" || this.omView === "pa" ? this.omView : "combined";
+      s.omCap = { version: c.version, m2: !!c.m2_rpcs, m3: !!c.m3_routers, m4: !!c.m4_guard, creation: !!c.creation_enabled };
+      s.omCap.ready = s.omCap.m2 && s.omCap.m3 && s.omCap.m4;
+      s.omCap.canCreate = s.omCap.ready && s.omCap.creation;
+      s.omView = v;
+      if (v === "combined") {
+        s.omDocs = (om.documents || []).map((d) => ({ id: d.id, payment_family: d.payment_family, payment_id: d.payment_id, bucket: d.bucket, object_path: d.object_path, file_name: d.file_name, file_type: d.file_type, size_bytes: Number(d.size_bytes) }));
+        const row = (r) => Object.assign({}, r, { code: r.payment_code, amount: Number(r.amount), revision_no: r.revision_no == null ? 0 : Number(r.revision_no), _om: true });
+        const X = this.omX || {}, tagX = (r) => Object.assign({}, r, { _om: true });
+        if (Array.isArray(s.shareholders)) s.shareholders = s.shareholders.concat((X.shareholders || []).map((r) => Object.assign(tagX(r), { full_name: String(r.full_name || "") + " \u00b7 Only Me" })));
+        if (Array.isArray(s.nominees)) s.nominees = s.nominees.concat((X.nominees || []).map(tagX));
+        if (Array.isArray(s.audit_logs)) s.audit_logs = s.audit_logs.concat(this.omAudit || []);
+        if (Array.isArray(s.share_bookings)) s.share_bookings = s.share_bookings.concat((X.share_bookings || []).map(tagX));
+        if (Array.isArray(s.construction_plans)) s.construction_plans = s.construction_plans.concat((X.construction_plans || []).map(tagX));
+        s.share_payments = (s.share_payments || []).concat((om.share_payments || []).map(row));
+        s.construction_payments = (s.construction_payments || []).concat((om.construction_payments || []).map(row));
+        if (Array.isArray(s.payment_revisions)) s.payment_revisions = s.payment_revisions.concat((om.revisions || []).map((r) => Object.assign({}, r, { share_payment_id: r.payment_family === "share" ? r.payment_id : null, construction_payment_id: r.payment_family === "construction" ? r.payment_id : null, revision_no: Number(r.revision_no), _om: true })));
+      }
+      return s;
     }
     /* Every refresh after a write re-reads the database, so the screen only ever shows what was actually saved. */
     async reload() {
@@ -1155,9 +1208,28 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     });
     return c;
   }
+  function saleAuditFilter(db) {
+    const hBk = {}, hPay = {}, hDoc = {}, hFu = {};
+    (db.share_bookings || []).forEach(function(b) {
+      if (b.archived_at) hBk[b.id] = 1;
+    });
+    (db.share_payments || []).forEach(function(p) {
+      if (hBk[p.booking_id]) hPay[p.id] = 1;
+    });
+    (db.documents || []).forEach(function(d) {
+      if (d.related_type === "booking" && hBk[d.related_id] || d.related_type === "share_payment" && hPay[d.related_id]) hDoc[d.id] = 1;
+    });
+    (db.payment_followups || []).forEach(function(f) {
+      if (f.booking_id && hBk[f.booking_id]) hFu[f.id] = 1;
+    });
+    return function(a) {
+      return a.action !== "Archived sale" && a.action !== "Restored sale" && !(a.action === "Archived record" && a.entity_type === "booking") && !(a.entity_type === "booking" && hBk[a.entity_id]) && !(a.entity_type === "share_payment" && hPay[a.entity_id]) && !(a.entity_type === "document" && hDoc[a.entity_id]) && !(a.entity_type === "payment_followup" && (hFu[a.entity_id] || hBk[a.entity_id]));
+    };
+  }
   function auditView(db, user, logs) {
     const rows = logs || db.audit_logs || [];
-    if (!user || can(user, "seeRoles")) return rows;
+    if (!user || !can(user, "seeRoles")) return [];
+    if (true) return rows;
     const hidden = {};
     (db.shareholders || []).forEach(function(h) {
       if (h.archived_at) hidden[h.id] = 1;
@@ -1166,8 +1238,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     (db.customers || []).forEach(function(h) {
       if (h.archived_at) hiddenC[h.id] = 1;
     });
+    const saleOk = saleAuditFilter(db);
     return rows.filter(function(a) {
-      return a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]) && !(a.customer_id && hiddenC[a.customer_id]) && !(a.action === "Archived record" && (a.entity_type === "customer" || a.entity_type === "customer_nominee"));
+      return saleOk(a) && a.action !== "Restored record" && !(a.action === "Archived record" && a.entity_type === "shareholder") && !(a.shareholder_id && hidden[a.shareholder_id]) && !(a.customer_id && hiddenC[a.customer_id]) && !(a.action === "Archived record" && (a.entity_type === "customer" || a.entity_type === "customer_nominee"));
     }).map(function(a) {
       const acct = a.entity_type === "user";
       const action = !acct ? a.action : a.action === "Created first Super Admin" || a.action === "Invited user" ? "Created account" : a.action === "Changed user role" ? "Edited user" : a.action;
@@ -1254,7 +1327,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (plan.status === "Cancelled") return { ok: false, why: "This plan is cancelled." };
       const vis = Calc.payVisible(db);
       if (!(db.construction_payments || []).some(function(p) {
-        return p.plan_id === plan.id && p.kind === "payment" && p.status === "Posted" && vis(p);
+        return p.plan_id === plan.id && !p._om && p.kind === "payment" && p.status === "Posted" && vis(p);
       })) return { ok: false, why: "The agreement is available after the first confirmed payment." };
       return { ok: true, why: "" };
     },
@@ -1270,6 +1343,16 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       });
       return function(p) {
         return live(p) && !(p.customer_id && (dc[p.customer_id] || dp[p.plan_id]));
+      };
+    },
+    /* Share Sale archive (migration 0032). A share payment counts as active only while its booking is live. Build once per calculation: const shVis = Calc.sharePayVisible(db). */
+    sharePayVisible: function(db) {
+      const ab = {};
+      (db.share_bookings || []).forEach(function(b) {
+        if (b.archived_at) ab[b.id] = 1;
+      });
+      return function(p) {
+        return live(p) && !ab[p.booking_id];
       };
     },
     /* What archiving a customer will do, for the confirmation dialog. Mirrors the database rules; the database function is the final authority. */
@@ -1356,14 +1439,17 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     followupToday: function(db, today) {
       const out = { shareholder: {}, customer: {}, booking: {}, plan: {} };
       if (!Array.isArray(db.payment_followups)) return out;
-      const latest = {};
+      const latest = {}, archBk = {};
+      (db.share_bookings || []).forEach(function(b) {
+        if (b.archived_at) archBk[b.id] = 1;
+      });
       db.payment_followups.forEach(function(r) {
         const k = r.target_type + ":" + (r.target_type === "share" ? r.booking_id : r.plan_id), c = latest[k];
         if (!c || Calc.followupCmp(r, c) > 0) latest[k] = r;
       });
       Object.keys(latest).forEach(function(k) {
         const r = latest[k];
-        if (!r.due_date || r.due_date !== today) return;
+        if (!r.due_date || r.due_date !== today || r.target_type === "share" && archBk[r.booking_id]) return;
         if (r.target_type === "share") {
           out.booking[r.booking_id] = 1;
           if (r.shareholder_id) out.shareholder[r.shareholder_id] = 1;
@@ -1507,13 +1593,13 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return e.amount;
       });
       const settings = db.settings[0];
-      const keys = lastMonthKeys(6), payVis = Calc.payVisible(db);
+      const keys = lastMonthKeys(6), payVis = Calc.payVisible(db), shVis = Calc.sharePayVisible(db);
       const trend = keys.map(function(k) {
         return {
           key: k,
           label: monthLabel(k),
           share: sum(db.share_payments.filter(function(p) {
-            return live(p) && monthKey(p.payment_date) === k;
+            return shVis(p) && monthKey(p.payment_date) === k;
           }), function(p) {
             return p.amount;
           }),
@@ -1552,7 +1638,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         const u = Calc.byId(db.units, id);
         return u ? u.code : "—";
       };
-      const recentPayments = db.share_payments.filter(live).map(function(p) {
+      const recentPayments = db.share_payments.filter(Calc.sharePayVisible(db)).map(function(p) {
         return { id: p.id, type: "Land Share", receipt: p.receipt_no, date: p.payment_date, who: shName2(p.shareholder_id), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
       }).concat(db.construction_payments.filter(payVis).map(function(p) {
         return { id: p.id, type: "Construction", receipt: p.receipt_no, date: p.payment_date, who: (p.customer_id ? custName(p.customer_id) : shName2(p.shareholder_id)) + " · " + (p.unit_id ? unitCode(p.unit_id) : "No unit yet"), amount: p.amount, method: p.method, status: p.status, kind: p.kind };
@@ -2071,7 +2157,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const dup = db.share_payments.filter(function(p) {
         return live(p) && p.kind === "payment" && p.status === "Posted" && p.booking_id === b.id && p.amount === amt && p.payment_date === input.payment_date && String(p.reference || "") === String(input.reference || "");
       })[0] || null;
-      return { overpay: Calc.overpay(amt, s.due), duplicate: dup, due: s.due };
+      return { overpay: Calc.overpay(amt, s.due), duplicate: dup, due: s.due, parent: { kind: "share", id: b.id } };
     };
     function sharePaymentRow(db, b, input, receipt, nextCode, extra) {
       return ins("share_payments", Object.assign({
@@ -2210,7 +2296,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const dup = db.construction_payments.filter(function(p) {
         return live(p) && p.kind === "payment" && p.status === "Posted" && p.plan_id === plan.id && p.amount === amt && p.payment_date === input.payment_date && String(p.reference || "") === String(input.reference || "");
       })[0] || null;
-      return { overpay: Calc.overpay(amt, pc.due), duplicate: dup, due: pc.due };
+      return { overpay: Calc.overpay(amt, pc.due), duplicate: dup, due: pc.due, parent: { kind: "cons", id: plan.id } };
     };
     S.addConstructionPayment = async function(input, requestId) {
       guard("write");
@@ -2400,7 +2486,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
   }
   const SB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const SB_IMG = ["image/jpeg", "image/png", "image/webp"];
-  const SB_TITLES = { VALIDATION: "Check the form", FORBIDDEN: "Permission needed", NEEDS_CONFIRMATION: "Needs confirmation", NO_CHANGE: "No changes", DUPLICATE_SUBMISSION: "Already submitted", IMMUTABLE: "Cannot change", HAS_LINKS: "Cannot archive yet", NOT_FOUND: "Not found", OVERPAY: "Payment too high", REVISION_CONFLICT: "Changed by someone else", NOT_EDITABLE: "Cannot edit" };
+  const SB_TITLES = { VALIDATION: "Check the form", FORBIDDEN: "Permission needed", NEEDS_CONFIRMATION: "Needs confirmation", NO_CHANGE: "No changes", DUPLICATE_SUBMISSION: "Already submitted", IMMUTABLE: "Cannot change", HAS_LINKS: "Cannot archive yet", NOT_FOUND: "Not found", OVERPAY: "Payment too high", REVISION_CONFLICT: "Changed by someone else", NOT_EDITABLE: "Cannot edit", BUSY: "Try again", TICKET_EXPIRED: "Upload expired", OBJECT_MISSING: "File not found" };
   const sbUuid = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
     return (c === "x" ? r : r & 3 | 8).toString(16);
@@ -3000,7 +3086,358 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       else await rpc("restore_record", { p_entity: entity, p_id: id, p_reason: reason.trim() });
       await done();
     };
+    S.archiveShareSale = async function(id, reason, requestId) {
+      guard("archive");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for archiving this sale.", "Reason needed", "VALIDATION");
+      try {
+        await rpc("archive_share_sale", { p_request_id: reqId(requestId), p_id: id, p_reason: String(reason).trim() });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return;
+        }
+        throw e;
+      }
+      await done();
+    };
+    S.restoreShareSale = async function(id, reason, requestId) {
+      guard("restore");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for restoring this sale.", "Reason needed", "VALIDATION");
+      try {
+        await rpc("restore_share_sale", { p_request_id: reqId(requestId), p_id: id, p_reason: String(reason).trim() });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return;
+        }
+        throw e;
+      }
+      await done();
+    };
     S.canRestoreTable = (table) => !!RESTORE_ENTITY[table];
+    /* ---- Phase 2A C1 (Super Admin only). Every private RPC below is reachable only through a row tagged _om, the explicit Only Me choice, or the Integrity
+       screen, and each requires db.omCap, which exists only for a Super Admin whose om_read_all call succeeded. A Project Author can never reach them. ---- */
+    const OM_BUCKET = "om-receipts";
+    /* every private RPC goes through omRpc: a refusal that means "you are no longer a Super Admin" or "a figure changed" refreshes the screen,
+       which drops the private data from memory (the repository only reads it for a current Super Admin) and clears the saved upload note. */
+    const omRpc = async (n, a) => {
+      try {
+        return await rpc(n, a);
+      } catch (e) {
+        const c = e && e.code;
+        if (c === "NOT_FOUND" || c === "FORBIDDEN") {
+          S.omForget();
+          try {
+            await refresh();
+          } catch (e2) {
+          }
+        } else if (c === "NEEDS_CONFIRMATION") {
+          try {
+            await refresh();
+          } catch (e2) {
+          }
+        }
+        throw e;
+      }
+    };
+    /* P6: a staged upload is remembered on this device only as {request id, ticket id, file name, size, time}, per user, for at most 24 hours */
+    const omKey = () => {
+      const u = getUser();
+      return u ? "anh_om_stage:" + u.id : null;
+    };
+    const omStore = {
+      get() {
+        try {
+          const k = omKey(), j = k && localStorage.getItem(k), r = j ? JSON.parse(j) : null;
+          if (r && r.at && Date.now() - r.at < 864e5) return r;
+          if (k) localStorage.removeItem(k);
+        } catch (e) {
+        }
+        return null;
+      },
+      set(r) {
+        try {
+          const k = omKey();
+          if (k) localStorage.setItem(k, JSON.stringify(r));
+        } catch (e) {
+        }
+      },
+      clear() {
+        try {
+          const k = omKey();
+          if (k) localStorage.removeItem(k);
+        } catch (e) {
+        }
+      }
+    };
+    S.omRefresh = function() {
+      return refresh();
+    };
+    S.omForget = function() {
+      omStore.clear();
+    };
+    S.omPending = function() {
+      const d = getDb(), u = getUser();
+      return d && d.omCap && d.omCap.canCreate && u && u.role === "Super Admin" ? omStore.get() : null;
+    };
+    S.omResume = async function() {
+      omRequire(true);
+      const rec = omStore.get();
+      if (!rec) throw new AppError("The upload expired. Attach the file again.", "Upload expired", "TICKET_EXPIRED");
+      const t = await omRpc("om_ticket_request", { p_request_id: rec.request_id });
+      if (!t || t.state !== "pending" || (t.expires_at && new Date(t.expires_at).getTime() <= Date.now())) {
+        omStore.clear();
+        throw new AppError("The upload expired. Attach the file again.", "Upload expired", "TICKET_EXPIRED");
+      }
+      return { ticket_id: t.ticket_id, file_name: rec.file_name, size: rec.size };
+    };
+    const omCap = () => {
+      const d = getDb();
+      return d && d.omCap ? d.omCap : null;
+    };
+    const omRequire = (create) => {
+      const u = getUser(), cap = omCap(), d = getDb();
+      if (!u || u.role !== "Super Admin" || !cap) throw new AppError("You do not have access to this action.", "Permission needed", "FORBIDDEN");
+      if (create && (!cap.canCreate || d.omView !== "combined")) throw new AppError("Only Me payments are not available right now. Nothing was saved.", "Not available", "NOT_AVAILABLE");
+      return u;
+    };
+    const omRowOf = (kind, id) => {
+      const d = getDb(), r = Calc.byId(kind === "share" ? d.share_payments : d.construction_payments, id);
+      return r && r._om ? r : null;
+    };
+    const omUsed = new Set(), omReq = {};
+    const omTicketOf = (input) => {
+      const t = input && input.ticket;
+      if (!t || !t.ticket_id || t.state !== "uploaded") {
+        if (input && input.file) throw new AppError("The file is still uploading or the upload failed. Wait for it, or remove the file.", "File not ready", "VALIDATION");
+        return null;
+      }
+      return t.ticket_id;
+    };
+    S.omStage = async function(file, key) {
+      omRequire(true);
+      checkFile(file, false);
+      omReq[key] = omReq[key] || sbUuid();
+      const t = await omRpc("om_ticket_request", { p_request_id: omReq[key] });
+      omStore.set({ request_id: omReq[key], ticket_id: t.ticket_id, file_name: file.name, size: file.size, at: Date.now() });
+      let r;
+      try {
+        r = await client.storage.from(t.bucket || OM_BUCKET).upload(t.object_path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+      } catch (e) {
+        r = { error: { message: "network" } };
+      }
+      if (r && r.error) {
+        S.omCancelTicket(t.ticket_id);
+        throw new AppError("Could not upload " + file.name + ". Check your connection and try again.", "Upload failed", "UPLOAD_FAILED");
+      }
+      return { ticket_id: t.ticket_id };
+    };
+    const omDone = (tid) => {
+      const r = omStore.get();
+      if (r && r.ticket_id === tid) omStore.clear();
+    };
+    S.omCancelTicket = function(id) {
+      if (!id || omUsed.has(id)) return Promise.resolve();
+      omDone(id);
+      return Promise.resolve(client.rpc("om_ticket_cancel", { p_ticket_id: id })).then(() => {
+      }, () => {
+      });
+    };
+    /* ---- C4: Only Me shareholders. Contract (mock-tested only): om_create_shareholder, om_create_plan, and om_create_booking_with_payment
+       accepting a private shareholder and a null payment. om_read_all returns shareholders, nominees, share_bookings, construction_plans. ---- */
+    const omPreviewGuard = () => { const d = getDb(); if (d.omCap && !d.omCap.canCreate) throw new AppError("Creation currently disabled \u2014 preview only.", "Preview only", "PREVIEW_ONLY"); };
+    const OM_CHOOSE = (what) => new AppError("Choose who can see this " + what + ": Everyone or Only Me.", "Check the form", "VALIDATION");
+    const omMust = () => { const d = getDb(); return !!(d.omCap && d.omCap.canCreate && d.omView === "combined"); };
+    const omPrivate = (table, id) => { if (!id) return false; const r = Calc.byId(getDb()[table] || [], id); return !!(r && r._om); };
+    const privPay = (input, parentPrivate) => {
+      if (parentPrivate) return Object.assign({}, input, { visibility: "only_me" });
+      if (omMust() && input.visibility !== "everyone" && input.visibility !== "only_me") throw OM_CHOOSE("payment");
+      return input;
+    };
+    const OM_NOEDIT = ["updateShareholder", "setPersonDocument", "removePersonDocument", "archiveShareholder", "archiveBooking", "archiveShareSale", "restoreShareSale", "updatePlanTotal", "assignUnitToPlan", "addDocument", "setPaymentFollowup", "saveDeedDraft", "finalizeDeed", "restoreRecord", "createPlan"];
+    OM_NOEDIT.forEach((nm) => {
+      const orig = S[nm];
+      if (typeof orig !== "function") return;
+      S[nm] = function() {
+        const args = Array.prototype.slice.call(arguments), d = getDb(), ids = {};
+        ["shareholders", "share_bookings", "construction_plans"].forEach((k) => (d[k] || []).forEach((r) => { if (r._om) ids[r.id] = 1; }));
+        let hit = false;
+        const scan = (v, depth) => { if (hit || v == null || depth > 3) return; if (typeof v === "string") { if (ids[v]) hit = true; } else if (typeof v === "object") Object.keys(v).forEach((k) => scan(v[k], depth + 1)); };
+        args.forEach((a) => scan(a, 0));
+        if (hit) return Promise.reject(new AppError("This record is Only Me. Editing, archiving or attaching documents to it is not available yet.", "Not available", "NOT_AVAILABLE"));
+        return orig.apply(S, args);
+      };
+    });
+    const origCreateSh = S.createShareholder;
+    S.createShareholder = async function(input, requestId) {
+      omPreviewGuard();
+      const vis = input && input.visibility;
+      if (omMust() && vis !== "everyone" && vis !== "only_me") throw OM_CHOOSE("shareholder");
+      if (vis !== "only_me") return origCreateSh.call(S, input, requestId);
+      guard("write");
+      omRequire(true);
+      const data = input.data, nominee = input.nominee || {}, files = input.files || {};
+      need(V.shareholder(data, nominee));
+      if (Object.keys(files).some((k) => files[k] && files[k] !== "REMOVE")) throw new AppError("Documents and photos cannot be attached to an Only Me shareholder yet. Remove the files and save, or choose Everyone.", "Not available", "NOT_AVAILABLE");
+      const hasNom = !!(nominee.name && nominee.name.trim());
+      const r = await omRpc("om_create_shareholder", { p_request_id: reqId(requestId), p_data: shJson(data), p_nominee: hasNom ? personJson(nominee) : null });
+      await done();
+      return find("shareholders", r.shareholder_id);
+    };
+    const origCSP = S.createShareholderPlan;
+    S.createShareholderPlan = async function(f, requestId) {
+      if (!f || !omPrivate("shareholders", f.shareholder_id)) return origCSP.call(S, f, requestId);
+      guard("write");
+      omRequire(true);
+      need(V.shareholderPlan(f));
+      const r = await omRpc("om_create_plan", { p_request_id: reqId(requestId), p_data: { shareholder_id: f.shareholder_id, total_amount: Number(f.total_amount), remarks: f.remarks || "" } });
+      await done();
+      return find("construction_plans", r.plan_id);
+    };
+    const origCreateBooking = S.createBooking;
+    S.createBooking = async function(input, requestId) {
+      omPreviewGuard();
+      const privSh = !!(input && omPrivate("shareholders", input.shareholder_id));
+      if (input && input.payment && !privSh) input = Object.assign({}, input, { payment: privPay(input.payment, false) });
+      if (privSh) { omRequire(true); if (input.payment) input = Object.assign({}, input, { payment: Object.assign({}, input.payment, { visibility: "only_me" }) }); }
+      if (!privSh && (!input || !input.payment || input.payment.visibility !== "only_me")) return origCreateBooking.call(S, input, requestId);
+      guard("write");
+      omRequire(true);
+      const db = getDb(), avail = db.settings[0].total_shares - Calc.sharesSold(db);
+      input = Object.assign({}, input, { booking_date: input.booking_date || TODAY });
+      need(V.booking(input, { available: avail }));
+      const pay = input.payment, grand = Number(input.quantity) * Number(input.unit_price) - Number(input.discount || 0);
+      if (pay) need(V.paymentCore(pay));
+      if (pay && Number(pay.amount) > grand + 5e-3) throw new AppError("The first payment exceeds the booking total. Lower it or increase the share quantity.", "Payment too high", "OVERPAY");
+      if (pay && pay.payment_date < input.booking_date) throw new AppError("The payment date cannot be earlier than the booking date.", "Check the dates", "VALIDATION");
+      const tid = pay ? omTicketOf(pay) : null;
+      const r = await omRpc(privSh ? "om_create_private_booking" : "om_create_booking_with_payment", { p_request_id: reqId(requestId), p_data: { shareholder_id: input.shareholder_id, quantity: Number(input.quantity), unit_price: Number(input.unit_price), discount: Number(input.discount || 0), booking_date: input.booking_date, reference_person: input.reference_person || "", remarks: input.remarks || "" }, p_payment: pay ? payJson(pay) : null, p_ticket_id: tid });
+      if (tid) {
+        omUsed.add(tid);
+        omDone(tid);
+      }
+      await done();
+      return { booking: find("share_bookings", r.booking_id), payment: r.payment_id ? find("share_payments", r.payment_id) : null };
+    };
+    const origAddShare = S.addSharePayment;
+    S.addSharePayment = async function(input, requestId) {
+      omPreviewGuard();
+      if (input) input = privPay(input, omPrivate("share_bookings", input.booking_id));
+      if (!input || input.visibility !== "only_me") return origAddShare.call(S, input, requestId);
+      guard("write");
+      omRequire(true);
+      const db = getDb(), b = Calc.byId(db.share_bookings, input.booking_id);
+      if (!b) throw new AppError("Choose a booking.", "Check the form");
+      need(V.paymentCore(input));
+      const chk = S.checkSharePayment(input);
+      if (chk.overpay && !input.allowOverpay) throw new AppError("This payment is " + fmtMoney(chk.overpay) + " more than the remaining due, counting Only Me payments.", "Needs confirmation", "NEEDS_CONFIRMATION");
+      if (chk.duplicate && !input.allowDuplicate) throw new AppError("A payment with the same booking, amount, date and reference already exists (" + chk.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
+      const tid = omTicketOf(input);
+      const r = await omRpc(b._om ? "om_add_private_share_payment" : "om_add_share_payment", { p_request_id: reqId(requestId), p_booking_id: b.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
+      if (tid) {
+        omUsed.add(tid);
+        omDone(tid);
+      }
+      await done();
+      return find("share_payments", r.payment_id);
+    };
+    const origAddCons = S.addConstructionPayment;
+    S.addConstructionPayment = async function(input, requestId) {
+      omPreviewGuard();
+      if (input) input = privPay(input, omPrivate("construction_plans", input.plan_id));
+      if (!input || input.visibility !== "only_me") return origAddCons.call(S, input, requestId);
+      guard("write");
+      omRequire(true);
+      const db = getDb(), plan = Calc.byId(db.construction_plans, input.plan_id);
+      if (!plan) throw new AppError("Choose a unit.", "Check the form");
+      need(V.paymentCore(input));
+      const chk = S.checkConstructionPayment(input);
+      if (chk.overpay && !input.allowOverpay) throw new AppError("This payment is " + fmtMoney(chk.overpay) + " more than the remaining due of " + fmtMoney(chk.due) + ", counting Only Me payments.", "Needs confirmation", "NEEDS_CONFIRMATION");
+      if (chk.duplicate && !input.allowDuplicate) throw new AppError("A payment with the same amount, date and reference already exists (" + chk.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
+      const tid = omTicketOf(input);
+      const r = await omRpc(plan._om ? "om_add_private_plan_payment" : "om_add_plan_payment", { p_request_id: reqId(requestId), p_plan_id: plan.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
+      if (tid) {
+        omUsed.add(tid);
+        omDone(tid);
+      }
+      await done();
+      return find("construction_payments", r.payment_id);
+    };
+    const omReverse = (kind, orig, family) => async function(id, reason) {
+      const p = omRowOf(kind, id);
+      if (!p) return orig.call(S, id, reason);
+      guard("reverse");
+      omRequire(false);
+      if (p.kind !== "payment" || p.status !== "Posted") throw new AppError("Only posted payments can be reversed.", "Cannot reverse");
+      if (!String(reason || "").trim()) throw new AppError("Give a reason for the reversal.", "Reason needed");
+      const r = await omRpc("om_reverse_payment", { p_request_id: sbUuid(), p_family: family, p_payment_id: id, p_reason: reason });
+      await done();
+      const rid = r && (r.reversal_id || r.reversal_payment_id || r.payment_id);
+      return rid ? find(kind === "share" ? "share_payments" : "construction_payments", rid) : null;
+    };
+    S.reverseSharePayment = omReverse("share", S.reverseSharePayment, "share");
+    S.reverseConstructionPayment = omReverse("cons", S.reverseConstructionPayment, "construction");
+    const origEdit = S.editPayment;
+    S.editPayment = async function(kind, id, input, requestId) {
+      const p = omRowOf(kind, id);
+      if (!p) return origEdit.call(S, kind, id, input, requestId);
+      guard("editPayment");
+      omRequire(false);
+      const db = getDb(), tn = kind === "share" ? "share_payments" : "construction_payments";
+      const imp = editPrecheck(db, kind, p, Object.assign({}, input, { ackDeed: true }));
+      try {
+        await omRpc(kind === "share" ? "om_edit_share_payment" : "om_edit_plan_payment", { p_request_id: reqId(requestId), p_payment_id: id, p_expected_revision: input.expected_revision != null ? Number(input.expected_revision) : Number(p.revision_no || 0), p_data: payJson(input), p_reason: String(input.reason || "").trim(), p_confirmed_over: input.allowOverpay ? roundMoney(imp.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
+      } catch (e) {
+        if (e && e.code === "DUPLICATE_SUBMISSION") {
+          await done();
+          return find(tn, id);
+        }
+        if (e && e.code === "REVISION_CONFLICT") {
+          try {
+            await done();
+          } catch (e2) {
+          }
+        }
+        throw e;
+      }
+      await done();
+      return find(tn, id);
+    };
+    S.omFileUrl = async function(doc) {
+      omRequire(false);
+      let r;
+      try {
+        r = await client.storage.from(doc.bucket || OM_BUCKET).createSignedUrl(doc.object_path, 600);
+      } catch (e) {
+        r = { error: { message: "network" } };
+      }
+      if (!r || r.error || !r.data || !r.data.signedUrl) throw new AppError("Could not open the file. Try again.", "Could not open", "FILE_UNAVAILABLE");
+      return r.data.signedUrl;
+    };
+    S.omIntegrity = async function() {
+      omRequire(false);
+      return await omRpc("om_integrity_check") || [];
+    };
+    S.omOrphans = async function() {
+      omRequire(false);
+      return await omRpc("om_orphan_list") || [];
+    };
+    S.omAcknowledge = async function(row, reason) {
+      omRequire(false);
+      if (String(reason || "").trim().length < 3) throw new AppError("Give a reason.", "Reason needed", "VALIDATION");
+      return omRpc("om_acknowledge", { p_check_id: row.check_id, p_subject: String(row.subject), p_fingerprint: row.fingerprint, p_reason: String(reason).trim() });
+    };
+    S.omRemoveOrphan = async function(o) {
+      omRequire(false);
+      let r;
+      try {
+        r = await client.storage.from(OM_BUCKET).remove([o.object_path]);
+      } catch (e) {
+        r = { error: { message: "network" } };
+      }
+      if (r && r.error) throw new AppError("Could not remove the file. Try again.", "Remove failed", "REMOVE_FAILED");
+      return omRpc("om_orphan_mark_cleaned", { p_ticket_id: o.ticket_id });
+    };
     return S;
   }
   function inRange(d, f) {
@@ -3048,7 +3485,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       dateLabel: "Payment date",
       cols: [{ k: "receipt", l: "Receipt" }, { k: "date", l: "Date", t: "date" }, { k: "name", l: "Shareholder" }, { k: "booking", l: "Booking" }, { k: "amount", l: "Amount", t: "money", total: true }, { k: "method", l: "Method" }, { k: "ref", l: "Reference" }, { k: "type", l: "Entry" }, { k: "status", l: "Status", t: "badge" }],
       build: function(db) {
-        return db.share_payments.filter(live).map(function(p) {
+        return db.share_payments.filter(Calc.sharePayVisible(db)).map(function(p) {
           const sh = Calc.byId(db.shareholders, p.shareholder_id), b = Calc.byId(db.share_bookings, p.booking_id);
           return { receipt: p.receipt_no, date: p.payment_date, name: sh.full_name, booking: b.code, amount: p.amount, method: methodLabel(p), ref: p.reference || "—", type: p.kind === "reversal" ? "Reversal" : "Payment", status: p.status };
         }).sort(byDateDesc("date"));
@@ -3176,8 +3613,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       noStatus: true,
       cols: [{ k: "section", l: "Section" }, { k: "item", l: "Item" }, { k: "amount", l: "Amount", t: "money" }],
       build: function(db, f) {
-        const sp = sum(db.share_payments.filter(function(p) {
-          return live(p) && inRange(p.payment_date, f);
+        const shVis = Calc.sharePayVisible(db), sp = sum(db.share_payments.filter(function(p) {
+          return shVis(p) && inRange(p.payment_date, f);
         }), function(p) {
           return p.amount;
         });
@@ -3920,8 +4357,9 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       e.target.value = "";
     } }), has && (file || canRm) && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "danger", onClick: () => onChange(file ? null : "REMOVE") }, "Remove"), value === "REMOVE" && doc && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", onClick: () => onChange(null) }, "Undo")));
   }
-  function ModalFooter({ onClose, busy, label, onSubmit, extra, cancelLabel }) {
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, extra, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, cancelLabel || "Cancel"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, onClick: onSubmit }, label || "Save"));
+  function ModalFooter({ onClose, busy, label, onSubmit, extra, cancelLabel, previewGuard }) {
+    const blocked = !!previewGuard && omPreviewOn(useApp().db);
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, extra, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, cancelLabel || "Cancel"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, onClick: onSubmit, disabled: blocked, title: blocked ? "Creation currently disabled \u2014 preview only." : void 0, "data-preview-blocked": blocked ? "1" : void 0 }, label || "Save"));
   }
   function usePaymentFollowup(targetType, targetId) {
     const { db, S, run } = useApp();
@@ -3964,12 +4402,234 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       receiptOf(p.rec);
     } }, "Close without the date")));
   }
+const omTag = (p) => p && p._om ? /* @__PURE__ */ React.createElement("span", { className: "badge t-warn om-chip", "data-testid": "om-chip", style: { marginLeft: 6 } }, "Only Me") : null;
+function OmBreakdown({ kind, parentId }) {
+  const { db } = useApp();
+  if (!db.omCap || db.omView !== "combined" || !parentId) return null;
+  const rows = (kind === "share" ? db.share_payments : db.construction_payments).filter((p) => (kind === "share" ? p.booking_id : p.plan_id) === parentId);
+  const net = (om) => rows.filter((p) => !!p._om === om).reduce((a, p) => a + Number(p.amount || 0), 0);
+  if (!rows.some((p) => p._om)) return null;
+  const pub = net(false), priv = net(true);
+  return /* @__PURE__ */ React.createElement("div", { className: "muted", "data-testid": "om-breakdown", style: { fontSize: 13 } }, "Everyone received ", fmtMoney(pub), " · Only Me received ", fmtMoney(priv), " · Total received ", fmtMoney(pub + priv));
+}
+function OmPaidSub({ kind, parentId }) {
+  const { db } = useApp();
+  if (!db.omCap || db.omView !== "combined" || !parentId) return null;
+  const rows = (kind === "share" ? db.share_payments : db.construction_payments).filter((p) => (kind === "share" ? p.booking_id : p.plan_id) === parentId && p._om);
+  if (!rows.length) return null;
+  const priv = rows.reduce((a, p) => a + Number(p.amount || 0), 0);
+  return /* @__PURE__ */ React.createElement("div", { className: "muted", "data-testid": "om-paid-sub", style: { fontSize: 12, fontWeight: 400 } }, "incl. Only Me ", fmtMoney(priv));
+}
+function OmFilter({ value, onChange }) {
+  const { db } = useApp();
+  if (!db.omCap || db.omView !== "combined") return null;
+  const o = (id, label) => /* @__PURE__ */ React.createElement("button", { type: "button", key: id, "aria-pressed": value === id, "data-testid": "om-filter-" + id, className: "btn btn-sm" + (value === id ? " btn-primary" : ""), onClick: () => onChange(id) }, label);
+  return /* @__PURE__ */ React.createElement("div", { role: "group", "aria-label": "Who can see", style: { display: "inline-flex", gap: 4, marginLeft: 8 } }, o("all", "All"), o("everyone", "Everyone"), o("only_me", "Only Me"));
+}
+function OmReceiptFiles({ p }) {
+  const { db, S, run } = useApp();
+  if (!p || !p._om || !db.omCap || db.omView !== "combined") return null;
+  const docs = (db.omDocs || []).filter((d) => d.payment_id === p.id);
+  if (!docs.length) return null;
+  const open1 = async (d) => {
+    const r = await run(() => S.omFileUrl(d));
+    if (r.ok && r.r) window.open(r.r, "_blank", "noopener");
+  };
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "om-receipt-files", className: "hint" }, docs.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id }, "Attachment: ", d.file_name, " (", Math.max(1, Math.round(d.size_bytes / 1024)), " KB) ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-file-open", onClick: () => open1(d) }, "Open file"))));
+}
+function OmDeedNote({ planId }) {
+  const { db } = useApp();
+  if (!db.omCap || db.omView !== "combined") return null;
+  if (!db.construction_payments.some((p) => p.plan_id === planId && p._om && p.kind === "payment" && p.status === "Posted")) return null;
+  return /* @__PURE__ */ React.createElement(Note, { tone: "info" }, /* @__PURE__ */ React.createElement("span", { "data-testid": "om-deed-note" }, "Only Me payments are not counted in the agreement. Its paid-to-date uses Everyone payments only."));
+}
+function omArchiveText(db, bookingId) {
+  if (!db.omCap || db.omView !== "combined" || !bookingId) return "";
+  const rows = db.share_payments.filter((p) => p.booking_id === bookingId);
+  if (!rows.some((p) => p._om)) return "";
+  const part = (om) => ({ n: rows.filter((p) => !!p._om === om && p.kind === "payment").length, net: rows.filter((p) => !!p._om === om).reduce((a2, p) => a2 + Number(p.amount || 0), 0) });
+  const a = part(false), o = part(true);
+  return " Everyone net " + fmtMoney(a.net) + " (" + a.n + " payment" + (a.n === 1 ? "" : "s") + "), Only Me net " + fmtMoney(o.net) + " (" + o.n + "), combined net " + fmtMoney(a.net + o.net) + ".";
+}
+function OmRoleWatch() {
+  const { db, S } = useApp();
+  const on = !!db.omCap;
+  useEffect(() => {
+    if (!on || !S.omRefresh) return;
+    let last = 0;
+    const go = () => {
+      if (document.visibilityState === "hidden" || Date.now() - last < 15e3) return;
+      last = Date.now();
+      S.omRefresh().catch(() => {
+      });
+    };
+    window.addEventListener("focus", go);
+    document.addEventListener("visibilitychange", go);
+    return () => {
+      window.removeEventListener("focus", go);
+      document.removeEventListener("visibilitychange", go);
+    };
+  }, [on]);
+  return null;
+}
+const omPreviewOn = (db) => !!(db && db.omCap && !db.omCap.canCreate);
+function OmPreviewNote() {
+  return /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("span", { role: "status", "data-testid": "om-preview-note" }, "Creation currently disabled \u2014 preview only."));
+}
+function OmShVis({ f, set }) {
+  const { db } = useApp(), cap = db.omCap;
+  const prev = omPreviewOn(db);
+  if (!(cap && (prev || cap.canCreate && db.omView === "combined"))) return null;
+  const v = f.visibility, only = v === "only_me", btn = (id, val, label, on) => /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": on, "data-testid": id, className: "btn" + (on ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => set("visibility")(val) }, label);
+  return /* @__PURE__ */ React.createElement("div", { className: "field full", style: { gridColumn: "1 / -1" }, "data-testid": "om-sh-visibility" }, /* @__PURE__ */ React.createElement("div", { className: "lbl", id: "om-sh-vis-l" }, "Who can see this shareholder? *"), prev && /* @__PURE__ */ React.createElement(OmPreviewNote, null), /* @__PURE__ */ React.createElement("div", { role: "radiogroup", "aria-labelledby": "om-sh-vis-l", style: { display: "inline-flex", gap: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, btn("om-sh-everyone", "everyone", "Everyone", v === "everyone"), btn("om-sh-onlyme", "only_me", "Only Me", only)), !v && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-sh-required", className: "muted", style: { fontSize: 13 } }, "Choose one to continue."), only && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, /* @__PURE__ */ React.createElement("span", { "data-testid": "om-sh-note" }, "Only you (Super Admin) can see this shareholder, their sales, payments and receipts. Project Authors will not see any of it. Documents and photos cannot be attached to an Only Me shareholder yet.")));
+}
+function OmField({ f, set, kind, parentId, lockSh }) {
+  const { db, S } = useApp();
+  const cap = db.omCap, prev = omPreviewOn(db), show = !!(cap && (prev || cap.canCreate && db.omView === "combined"));
+  const lockedBy = (() => {
+    const one = (t, id) => { const r = id ? (db[t] || []).filter((x) => x.id === id)[0] : null; return !!(r && r._om); };
+    return one("shareholders", lockSh) || one("share_bookings", f.booking_id) || one("construction_plans", f.plan_id);
+  })();
+  const only = show && (lockedBy || f.visibility === "only_me");
+  useEffect(() => {
+    if (show && lockedBy && f.visibility !== "only_me") set("visibility")("only_me");
+  }, [show, lockedBy, f.visibility]);
+  const reqRef = useRef(null);
+  if (!reqRef.current) reqRef.current = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : uid("req");
+  const t = f.ticket || null, fileKey = f.file ? f.file.name + ":" + f.file.size : "";
+  const live = useRef({ t: null });
+  live.current.t = t;
+  const [pend, setPend] = useState(() => S.omPending ? S.omPending() : null);
+  const [rmsg, setRmsg] = useState("");
+  useEffect(() => {
+    if (!only || prev) return;
+    if (!f.file) {
+      if (t && t.resumed) return;
+      if (t) {
+        S.omCancelTicket(t.ticket_id);
+        set("ticket")(null);
+      }
+      return;
+    }
+    if (t && t.fileKey === fileKey) return;
+    let dead = false;
+    if (t) S.omCancelTicket(t.ticket_id);
+    set("ticket")({ state: "uploading", fileKey });
+    S.omStage(f.file, reqRef.current + ":" + fileKey).then((r) => {
+      if (!dead) set("ticket")({ state: "uploaded", fileKey, ticket_id: r.ticket_id });
+    }).catch((e) => {
+      if (!dead) set("ticket")({ state: "error", fileKey, msg: e && e.message || "The upload failed." });
+    });
+    return () => {
+      dead = true;
+    };
+  }, [only, fileKey]);
+  useEffect(() => () => {
+    const cur = live.current.t;
+    if (cur && cur.ticket_id) S.omCancelTicket(cur.ticket_id);
+  }, []);
+  if (!show) return null;
+  const pick = (v) => set("visibility")(v);
+  const resume = async () => {
+    try {
+      const r = await S.omResume();
+      set("ticket")({ state: "uploaded", fileKey: "resumed", resumed: true, ticket_id: r.ticket_id, name: r.file_name });
+      setPend(null);
+      setRmsg("");
+    } catch (e) {
+      setPend(null);
+      setRmsg(e && e.message || "The upload expired. Attach the file again.");
+    }
+  };
+  const discard = () => {
+    if (pend) S.omCancelTicket(pend.ticket_id);
+    S.omForget();
+    setPend(null);
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "field full", style: { gridColumn: "1 / -1" }, "data-testid": "om-visibility" }, /* @__PURE__ */ React.createElement("div", { className: "lbl", id: "om-vis-l" }, "Who can see this payment?"), prev && /* @__PURE__ */ React.createElement(OmPreviewNote, null), /* @__PURE__ */ React.createElement("div", { role: "radiogroup", "aria-labelledby": "om-vis-l", style: { display: "inline-flex", gap: 0, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": !only && f.visibility === "everyone", disabled: lockedBy, "data-testid": "om-vis-everyone", className: "btn" + (!only && f.visibility === "everyone" ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("everyone") }, "Everyone"), /* @__PURE__ */ React.createElement("button", { type: "button", role: "radio", "aria-checked": only, "data-testid": "om-vis-onlyme", className: "btn" + (only ? " btn-primary" : ""), style: { borderRadius: 0 }, onClick: () => pick("only_me") }, "Only Me")), !only && f.visibility !== "everyone" && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-vis-required", className: "muted", style: { fontSize: 13 } }, "Choose one to continue."), lockedBy && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-vis-locked", className: "muted", style: { fontSize: 13 } }, "This record is Only Me, so its payments are Only Me too."), only && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, /* @__PURE__ */ React.createElement("span", { "data-testid": "om-note" }, "Only you (Super Admin) can see this payment. Project Authors will not see it, any number it uses, or its file.")), only && !t && !f.file && pend && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume", className: "muted", style: { fontSize: 13 } }, "An earlier upload is waiting: ", pend.file_name, ". ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-use", onClick: resume }, "Use it"), " ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", "data-testid": "om-resume-discard", onClick: discard }, "Discard")), only && rmsg && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-resume-msg", className: "muted", style: { fontSize: 13 } }, rmsg), only && t && /* @__PURE__ */ React.createElement("div", { "data-testid": "om-ticket-state", className: "muted", style: { fontSize: 13 } }, t.state === "uploading" ? "Uploading…" : t.state === "uploaded" ? "Uploaded, not yet saved" + (t.name ? ": " + t.name : "") : t.msg, t.state !== "uploading" && /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", style: { marginLeft: 8 }, "data-testid": "om-ticket-cancel", onClick: () => {
+    if (t.ticket_id) S.omCancelTicket(t.ticket_id);
+    set("ticket")(null);
+    set("file")(null);
+  } }, "Cancel upload")));
+}
+function OmViewBar() {
+  const { db, setOmView } = useApp();
+  if (!db.omCap || !setOmView) return null;
+  const v = db.omView || "combined";
+  const b = (id, label, tid) => /* @__PURE__ */ React.createElement("button", { type: "button", "data-testid": tid, "aria-pressed": v === id, className: "btn btn-sm" + (v === id ? " btn-primary" : ""), onClick: () => setOmView(id) }, label);
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "om-viewbar", role: "group", "aria-label": "Only Me view", style: { display: "inline-flex", gap: 4, marginRight: 8 } }, b("combined", "Combined", "om-view-combined"), b("public", "Show Everyone only", "om-view-public"), b("pa", "View as Project Author", "om-view-pa"));
+}
+function OmBanner() {
+  const { db } = useApp();
+  if (!db.omCap) return null;
+  if (db.omView === "pa") return /* @__PURE__ */ React.createElement("div", { role: "status", "data-testid": "om-banner-pa", className: "note warn", style: { margin: "0 0 12px", padding: "8px 12px" } }, "Simulating Project Author: Only Me payments are hidden. Changes you save here are Everyone payments.");
+  if (db.omView === "public") return /* @__PURE__ */ React.createElement("div", { role: "status", "data-testid": "om-banner-public", className: "note info", style: { margin: "0 0 12px", padding: "8px 12px" } }, "Showing Everyone only. Only Me payments are not included in these figures.");
+  return null;
+}
+function IntegrityPage() {
+  const { db, S, run, confirm, toast } = useApp();
+  const [rows, setRows] = useState(null), [orph, setOrph] = useState(null), [err, setErr] = useState(null), [ack, setAck] = useState(null), [reason, setReason] = useState(""), [busy, setBusy] = useState(false);
+  const load = async () => {
+    try {
+      setRows(await S.omIntegrity());
+      setOrph(await S.omOrphans());
+      setErr(null);
+    } catch (e) {
+      setErr(e && e.message || "Could not load.");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  if (!db.omCap || db.omView === "pa") return /* @__PURE__ */ React.createElement(Empty, { icon: "shield", title: "Not available", text: "This screen is for the Super Admin." });
+  const sev = (s) => /* @__PURE__ */ React.createElement("span", { className: "badge " + (s === "error" ? "t-bad" : s === "warn" ? "t-warn" : "t-ok") }, s);
+  const doAck = async () => {
+    if (String(reason).trim().length < 3) return;
+    setBusy(true);
+    const r = await run(() => S.omAcknowledge(ack, String(reason).trim()), "Acknowledged");
+    setBusy(false);
+    if (r.ok) {
+      setAck(null);
+      setReason("");
+      load();
+    }
+  };
+  const remove = async (o) => {
+    const ok0 = await confirm({ title: "Remove file", message: "Delete this unused uploaded file? This cannot be undone.", confirmLabel: "Remove file", danger: true });
+    if (!ok0 || !ok0.ok) return;
+    const r = await run(() => S.omRemoveOrphan(o), "File removed");
+    if (r.ok) load();
+  };
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Integrity", sub: "Checks on Only Me records. Nothing is changed or removed automatically." }), err && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, err), /* @__PURE__ */ React.createElement(Card, { title: "Checks", sub: "Findings from the database. Acknowledge a finding with a reason once you have reviewed it.", flush: true }, /* @__PURE__ */ React.createElement(DataTable, { rows: rows || [], pageSize: 10, empty: { title: rows ? "No findings" : "Loading…", text: "All checks passed.", icon: "check" }, cols: [
+    { key: "check_id", label: "Check", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono", "data-testid": "integrity-check" }, r.check_id) },
+    { key: "severity", label: "Severity", render: (r) => sev(r.severity) },
+    { key: "subject", label: "Subject", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, String(r.subject)) },
+    { key: "detail", label: "Detail", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "muted" }, typeof r.detail === "string" ? r.detail : JSON.stringify(r.detail)) },
+    { key: "state", label: "", align: "r", render: (r) => r.acknowledged ? /* @__PURE__ */ React.createElement("span", { className: "badge t-ok", title: r.ack_reason || "" }, "Acknowledged") : r.ack_allowed ? /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => setAck(r), "data-testid": "integrity-ack" }, "Acknowledge") : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "—") }
+  ] })), ack && /* @__PURE__ */ React.createElement(Card, { title: "Acknowledge " + ack.check_id, sub: String(ack.subject) }, /* @__PURE__ */ React.createElement(Field, { label: "Reason", req: true }, /* @__PURE__ */ React.createElement(Txt, { value: reason, onChange: setReason, placeholder: "Why this is acceptable" })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 } }, /* @__PURE__ */ React.createElement(Btn, { onClick: () => setAck(null) }, "Cancel"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, disabled: String(reason).trim().length < 3, onClick: doAck, "data-testid": "integrity-ack-save" }, "Save acknowledgement"))), /* @__PURE__ */ React.createElement(Card, { title: "Orphan files", sub: "Uploads whose payment was never saved. They are listed here and removed only when you choose.", flush: true }, /* @__PURE__ */ React.createElement(DataTable, { rows: orph || [], pageSize: 10, empty: { title: "No orphan files", text: "Nothing to clean up.", icon: "check" }, cols: [
+    { key: "object_path", label: "File", render: (o) => /* @__PURE__ */ React.createElement("span", { className: "mono", "data-testid": "orphan-row" }, o.object_path) },
+    { key: "state", label: "State" },
+    { key: "created_at", label: "Uploaded", render: (o) => fmtDateTime(o.created_at) },
+    { key: "size_bytes", label: "Size", align: "r", render: (o) => o.size_bytes != null ? Math.round(o.size_bytes / 1024) + " KB" : "—" },
+    { key: "rm", label: "", align: "r", render: (o) => /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "danger", onClick: () => remove(o), "data-testid": "orphan-remove" }, "Remove file") }
+  ] })));
+}
+function OmArchiveImpact({ bookingId }) {
+  const { db } = useApp();
+  if (!db.omCap || db.omView !== "combined" || !bookingId) return null;
+  const rows = db.share_payments.filter((p) => p.booking_id === bookingId);
+  const part = (om) => ({ n: rows.filter((p) => !!p._om === om && p.kind === "payment").length, net: rows.filter((p) => !!p._om === om).reduce((a2, p) => a2 + Number(p.amount || 0), 0) });
+  const a = part(false), o = part(true);
+  if (!o.n) return null;
+  return /* @__PURE__ */ React.createElement("div", { "data-testid": "om-archive-impact", className: "muted", style: { fontSize: 13 } }, "Everyone net ", fmtMoney(a.net), " (", a.n, " payment", a.n === 1 ? "" : "s", ") · Only Me net ", fmtMoney(o.net), " (", o.n, ") · Combined net ", fmtMoney(a.net + o.net));
+}
+
   function PaymentFields({ f, set, errs, dueHint }) {
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Amount", req: true, err: errs.amount, hint: dueHint }, /* @__PURE__ */ React.createElement(Money, { value: f.amount, onChange: set("amount"), placeholder: "0" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", req: true, err: errs.payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.payment_date, onChange: set("payment_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method", err: errs.method }, /* @__PURE__ */ React.createElement(Sel, { value: f.method, onChange: set("method"), options: METHODS, placeholder: "Select method (optional)" })), f.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details", hint: "Optional. For example: Cash, Company account, Other bank." }, /* @__PURE__ */ React.createElement(Txt, { value: f.method_details || "", onChange: set("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Transaction / cheque reference", hint: "Optional", err: errs.reference }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference, onChange: set("reference"), placeholder: f.method === "bKash" || f.method === "Nagad" || f.method === "Rocket" || f.method === "Upay" ? "Transaction ID" : f.method === "Cheque" ? "Cheque number" : "Reference" })), /* @__PURE__ */ React.createElement(Field, { label: "Note", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.note, onChange: set("note"), placeholder: "Optional" })), /* @__PURE__ */ React.createElement(Field, { label: "Attach receipt or slip", full: true, hint: "Stored with the payment. Image or PDF." }, /* @__PURE__ */ React.createElement(FileIn, { onChange: set("file") })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(OmField, { f, set }), /* @__PURE__ */ React.createElement(Field, { label: "Amount", req: true, err: errs.amount, hint: dueHint }, /* @__PURE__ */ React.createElement(Money, { value: f.amount, onChange: set("amount"), placeholder: "0" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", req: true, err: errs.payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.payment_date, onChange: set("payment_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method", err: errs.method }, /* @__PURE__ */ React.createElement(Sel, { value: f.method, onChange: set("method"), options: METHODS, placeholder: "Select method (optional)" })), f.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details", hint: "Optional. For example: Cash, Company account, Other bank." }, /* @__PURE__ */ React.createElement(Txt, { value: f.method_details || "", onChange: set("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Transaction / cheque reference", hint: "Optional", err: errs.reference }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference, onChange: set("reference"), placeholder: f.method === "bKash" || f.method === "Nagad" || f.method === "Rocket" || f.method === "Upay" ? "Transaction ID" : f.method === "Cheque" ? "Cheque number" : "Reference" })), /* @__PURE__ */ React.createElement(Field, { label: "Note", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.note, onChange: set("note"), placeholder: "Optional" })), /* @__PURE__ */ React.createElement(Field, { label: "Attach receipt or slip", full: true, hint: "Stored with the payment. Image or PDF." }, /* @__PURE__ */ React.createElement(FileIn, { onChange: set("file") })));
   }
   function PayWarn({ chk }) {
     if (!chk) return null;
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 8 } }, chk.overpay > 0 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This is ", fmtMoney(chk.overpay), " more than the remaining due."), " The extra amount will show as an overpayment. Confirm only if this is intended."), chk.duplicate && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Possible duplicate."), " A payment with the same amount, date and reference was already recorded (", chk.duplicate.receipt_no || chk.duplicate.code, ")."));
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 8 } }, chk.parent && /* @__PURE__ */ React.createElement(OmBreakdown, { kind: chk.parent.kind, parentId: chk.parent.id }), chk.overpay > 0 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This is ", fmtMoney(chk.overpay), " more than the remaining due."), " The extra amount will show as an overpayment. Confirm only if this is intended."), chk.duplicate && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Possible duplicate."), " A payment with the same amount, date and reference was already recorded (", chk.duplicate.receipt_no || chk.duplicate.code, ")."));
   }
   function ShareholderForm({ shareholder, onClose, onSaved }) {
     const { db, S, run } = useApp();
@@ -3993,7 +4653,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         return;
       }
       setBusy(true);
-      const r = await run(() => shareholder ? S.updateShareholder(shareholder.id, { data: f, nominee: n, files }, reqId) : S.createShareholder({ data: f, nominee: n, files }, reqId), shareholder ? "Shareholder updated" : "Shareholder added");
+      const r = await run(() => shareholder ? S.updateShareholder(shareholder.id, { data: f, nominee: n, files }, reqId) : S.createShareholder({ data: f, nominee: n, files, visibility: f.visibility }, reqId), shareholder ? "Shareholder updated" : "Shareholder added");
       setBusy(false);
       if (r.ok) {
         onClose();
@@ -4004,7 +4664,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       const d = id ? Calc.byId(db.documents, id) : null;
       return d && !d.archived_at ? d : null;
     };
-    return /* @__PURE__ */ React.createElement(Modal, { title: shareholder ? "Edit shareholder" : "Add shareholder", sub: shareholder ? shareholder.code : "Only the full name is required. Everything else can be added later.", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: dups ? "Save anyway" : shareholder ? "Save changes" : "Add shareholder" }) }, dups && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This may already exist."), " Matching record", dups.length > 1 ? "s" : "", ": ", dups.map((d) => d.code + " " + d.full_name).join("; "), ". Check before saving a second record for the same person."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Personal details"), /* @__PURE__ */ React.createElement(Field, { label: "Full name", req: true, err: errs.full_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.full_name, onChange: set("full_name"), autoComplete: "off" })), /* @__PURE__ */ React.createElement(Field, { label: "Phone number", err: errs.phone }, /* @__PURE__ */ React.createElement(Txt, { value: f.phone, onChange: set("phone"), placeholder: "01711-000000", inputMode: "tel" })), /* @__PURE__ */ React.createElement(Field, { label: "Email", err: errs.email }, /* @__PURE__ */ React.createElement(Txt, { value: f.email, onChange: set("email"), type: "email" })), /* @__PURE__ */ React.createElement(Field, { label: "NID number", err: errs.nid, hint: "Optional. 10, 13 or 17 digits." }, /* @__PURE__ */ React.createElement(Txt, { value: f.nid, onChange: set("nid"), inputMode: "numeric" })), /* @__PURE__ */ React.createElement(Field, { label: "Profession" }, /* @__PURE__ */ React.createElement(Txt, { value: f.profession, onChange: set("profession") })), /* @__PURE__ */ React.createElement(Field, { label: "Designation" }, /* @__PURE__ */ React.createElement(Txt, { value: f.designation, onChange: set("designation") })), /* @__PURE__ */ React.createElement(Field, { label: "Address", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.address, onChange: set("address") })), /* @__PURE__ */ React.createElement(Field, { label: "Registration date", err: errs.registration_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.registration_date, onChange: set("registration_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Status" }, /* @__PURE__ */ React.createElement(Sel, { value: f.status, onChange: set("status"), options: ["Active", "Inactive"] })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Shareholder photo and NID"), /* @__PURE__ */ React.createElement("div", { className: "full slots" }, /* @__PURE__ */ React.createElement(DocSlot, { label: "Profile photo", doc: dc(shareholder && shareholder.photo_doc_id), value: files.photo, onChange: setFile("photo") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "NID front", doc: dc(shareholder && shareholder.nid_front_doc_id), value: files.nid_front, onChange: setFile("nid_front") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "NID back", doc: dc(shareholder && shareholder.nid_back_doc_id), value: files.nid_back, onChange: setFile("nid_back") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Nominee"), /* @__PURE__ */ React.createElement(Field, { label: "Nominee name", err: errs.nominee_name }, /* @__PURE__ */ React.createElement(Txt, { value: n.name, onChange: (v) => {
+    return /* @__PURE__ */ React.createElement(Modal, { title: shareholder ? "Edit shareholder" : "Add shareholder", sub: shareholder ? shareholder.code : "Only the full name is required. Everything else can be added later.", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, previewGuard: !shareholder, label: dups ? "Save anyway" : shareholder ? "Save changes" : "Add shareholder" }) }, dups && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This may already exist."), " Matching record", dups.length > 1 ? "s" : "", ": ", dups.map((d) => d.code + " " + d.full_name).join("; "), ". Check before saving a second record for the same person."), !shareholder && /* @__PURE__ */ React.createElement(OmShVis, { f, set }), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Personal details"), /* @__PURE__ */ React.createElement(Field, { label: "Full name", req: true, err: errs.full_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.full_name, onChange: set("full_name"), autoComplete: "off" })), /* @__PURE__ */ React.createElement(Field, { label: "Phone number", err: errs.phone }, /* @__PURE__ */ React.createElement(Txt, { value: f.phone, onChange: set("phone"), placeholder: "01711-000000", inputMode: "tel" })), /* @__PURE__ */ React.createElement(Field, { label: "Email", err: errs.email }, /* @__PURE__ */ React.createElement(Txt, { value: f.email, onChange: set("email"), type: "email" })), /* @__PURE__ */ React.createElement(Field, { label: "NID number", err: errs.nid, hint: "Optional. 10, 13 or 17 digits." }, /* @__PURE__ */ React.createElement(Txt, { value: f.nid, onChange: set("nid"), inputMode: "numeric" })), /* @__PURE__ */ React.createElement(Field, { label: "Profession" }, /* @__PURE__ */ React.createElement(Txt, { value: f.profession, onChange: set("profession") })), /* @__PURE__ */ React.createElement(Field, { label: "Designation" }, /* @__PURE__ */ React.createElement(Txt, { value: f.designation, onChange: set("designation") })), /* @__PURE__ */ React.createElement(Field, { label: "Address", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.address, onChange: set("address") })), /* @__PURE__ */ React.createElement(Field, { label: "Registration date", err: errs.registration_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.registration_date, onChange: set("registration_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Status" }, /* @__PURE__ */ React.createElement(Sel, { value: f.status, onChange: set("status"), options: ["Active", "Inactive"] })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Shareholder photo and NID"), /* @__PURE__ */ React.createElement("div", { className: "full slots" }, /* @__PURE__ */ React.createElement(DocSlot, { label: "Profile photo", doc: dc(shareholder && shareholder.photo_doc_id), value: files.photo, onChange: setFile("photo") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "NID front", doc: dc(shareholder && shareholder.nid_front_doc_id), value: files.nid_front, onChange: setFile("nid_front") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "NID back", doc: dc(shareholder && shareholder.nid_back_doc_id), value: files.nid_back, onChange: setFile("nid_back") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Nominee"), /* @__PURE__ */ React.createElement(Field, { label: "Nominee name", err: errs.nominee_name }, /* @__PURE__ */ React.createElement(Txt, { value: n.name, onChange: (v) => {
       setN("name")(v);
       if (errs.nominee_name) setErrs((p) => Object.assign({}, p, { nominee_name: void 0 }));
     } })), /* @__PURE__ */ React.createElement(Field, { label: "Relation" }, /* @__PURE__ */ React.createElement(Txt, { value: n.relation, onChange: setN("relation"), placeholder: "Spouse, son, brother…" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee phone", err: errs.nominee_phone }, /* @__PURE__ */ React.createElement(Txt, { value: n.phone, onChange: setN("phone"), inputMode: "tel" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee NID", err: errs.nominee_nid }, /* @__PURE__ */ React.createElement(Txt, { value: n.nid, onChange: setN("nid"), inputMode: "numeric" })), /* @__PURE__ */ React.createElement(Field, { label: "Nominee address", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: n.address, onChange: setN("address") })), /* @__PURE__ */ React.createElement("div", { className: "full slots" }, /* @__PURE__ */ React.createElement(DocSlot, { label: "Nominee photo", doc: dc(nom0 && nom0.photo_doc_id), value: files.nominee_photo, onChange: setFile("nominee_photo") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "Nominee NID front", doc: dc(nom0 && nom0.nid_front_doc_id), value: files.nominee_nid_front, onChange: setFile("nominee_nid_front") }), /* @__PURE__ */ React.createElement(DocSlot, { label: "Nominee NID back", doc: dc(nom0 && nom0.nid_back_doc_id), value: files.nominee_nid_back, onChange: setFile("nominee_nid_back") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Remarks"), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.remarks, onChange: set("remarks") }))));
@@ -4046,6 +4706,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setBusy(true);
       const r = await run(() => S.addSharePayment(Object.assign({}, f, { allowOverpay: !!warn, allowDuplicate: !!warn, correction_of: correctionOf }), reqId), "Payment recorded");
       setBusy(false);
+      if (!r.ok && r.e && r.e.code === "NEEDS_CONFIRMATION") setWarn(null);
       if (!r.ok) return;
       if (fp.changed) {
         const ok = await fp.save(r.r && r.r.id);
@@ -4057,7 +4718,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       onClose();
       if (r.r) open("receipt", { kind: "share", id: r.r.id });
     };
-    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected share payment" : "Add share payment", sub: "Land share payment. Construction payments are recorded separately.", onClose, footer: fp.pending ? null : /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement(FollowupRetry, { fp, onClose, receiptOf: (rec) => rec && open("receipt", { kind: "share", id: rec.id }) }), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Shareholder", req: true, err: errs.sh }, /* @__PURE__ */ React.createElement(SearchPick, { value: sh, onChange: (v) => {
+    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected share payment" : "Add share payment", sub: "Land share payment. Construction payments are recorded separately.", onClose, footer: fp.pending ? null : /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, previewGuard: true, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement(FollowupRetry, { fp, onClose, receiptOf: (rec) => rec && open("receipt", { kind: "share", id: rec.id }) }), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Shareholder", req: true, err: errs.sh }, /* @__PURE__ */ React.createElement(SearchPick, { value: sh, onChange: (v) => {
       setSh(v);
       setF((p) => Object.assign({}, p, { booking_id: "" }));
     }, options: shOptions, placeholder: "Search name, ID or phone", disabled: !!shareholderId || !!bookingId })), /* @__PURE__ */ React.createElement(Field, { label: "Booking", req: true, err: errs.booking_id, hint: sh && !books.length ? "This shareholder has no share booking yet." : void 0 }, /* @__PURE__ */ React.createElement(SearchPick, { value: f.booking_id, onChange: set("booking_id"), options: books.map((x) => ({ value: x.b.id, label: x.b.code, sub: x.b.quantity + " share(s) x " + fmtMoney(x.b.unit_price) + " · due " + fmtMoney(x.s.due), search: x.b.booking_date })), placeholder: "Search booking code", disabled: !!bookingId || !sh, emptyText: "This shareholder has no booking" })), sel && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Grand total"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(sel.s.grand))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid so far"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(sel.s.paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(sel.s.due)))), /* @__PURE__ */ React.createElement(PaymentFields, { f, set, errs, dueHint: sel && sel.s.due > 0 ? /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => setF((p) => Object.assign({}, p, { amount: String(sel.s.due) })) }, "Pay full due (", fmtMoney(sel.s.due), ")") : void 0 }), fp.field), /* @__PURE__ */ React.createElement(PayWarn, { chk: warn }));
@@ -4090,6 +4751,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       setBusy(true);
       const r = await run(() => S.addConstructionPayment(Object.assign({ plan_id: pid }, f, { allowOverpay: !!warn, allowDuplicate: !!warn, correction_of: correctionOf }), reqId), "Construction payment recorded");
       setBusy(false);
+      if (!r.ok && r.e && r.e.code === "NEEDS_CONFIRMATION") setWarn(null);
       if (!r.ok) return;
       if (fp.changed) {
         const ok = await fp.save(r.r && r.r.id);
@@ -4102,13 +4764,13 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (r.r) open("receipt", { kind: "cons", id: r.r.id });
     };
     const after = cur && Number(f.amount) > 0 ? roundMoney(cur.s.due - Number(f.amount)) : null;
-    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected construction payment" : "Add construction payment", sub: "Any amount, any date. Land share payments are recorded separately.", onClose, footer: fp.pending ? null : /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement(FollowupRetry, { fp, onClose, receiptOf: (rec) => rec && open("receipt", { kind: "cons", id: rec.id }) }), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit or customer plan", req: true, err: errs.plan }, /* @__PURE__ */ React.createElement(SearchPick, { value: pid, onChange: (v) => {
+    return /* @__PURE__ */ React.createElement(Modal, { title: correctionOf ? "Record corrected construction payment" : "Add construction payment", sub: "Any amount, any date. Land share payments are recorded separately.", onClose, footer: fp.pending ? null : /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, previewGuard: true, label: warn ? "Confirm and record" : "Record payment" }) }, correctionOf && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Correcting ", correctionOf, ". The original stays in the record as reversed."), /* @__PURE__ */ React.createElement(FollowupRetry, { fp, onClose, receiptOf: (rec) => rec && open("receipt", { kind: "cons", id: rec.id }) }), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Unit or customer plan", req: true, err: errs.plan }, /* @__PURE__ */ React.createElement(SearchPick, { value: pid, onChange: (v) => {
       setPid(v);
       setF((p) => Object.assign({}, p, { amount: "" }));
     }, options: plans.map((x) => {
       const s0 = (x.p.customer_id ? Calc.byId(db.customers, x.p.customer_id) : Calc.byId(db.shareholders, x.p.shareholder_id)) || {};
       return { value: x.p.id, label: x.p.unit_id ? "Unit " + x.u.code : (x.p.customer_id ? "Customer plan " : "Plan (no unit yet) ") + x.p.code, sub: (s0.full_name || "") + (s0.code ? " · " + s0.code : "") + (s0.phone ? " · " + s0.phone : ""), search: x.u.code + " " + (s0.full_name || "") + " " + (s0.code || "") + " " + (s0.phone || "") };
-    }), placeholder: "Search unit, name, ID or phone", disabled: !!planId })), cur && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.total))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid so far"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.due))), after !== null && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Due after this payment"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(Math.max(0, after))))), /* @__PURE__ */ React.createElement(PaymentFields, { f, set, errs, dueHint: cur && cur.s.due > 0 ? /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => setF((p) => Object.assign({}, p, { amount: String(cur.s.due) })) }, "Pay full due (", fmtMoney(cur.s.due), ")") : "Enter the amount the client is paying now." }), fp.field), /* @__PURE__ */ React.createElement(PayWarn, { chk: warn }));
+    }), placeholder: "Search unit, name, ID or phone", disabled: !!planId })), cur && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.total))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid so far"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(cur.s.due))), after !== null && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Due after this payment"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(Math.max(0, after))))), /* @__PURE__ */ React.createElement(PaymentFields, { f: Object.assign({}, f, { plan_id: pid }), set, errs, dueHint: cur && cur.s.due > 0 ? /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => setF((p) => Object.assign({}, p, { amount: String(cur.s.due) })) }, "Pay full due (", fmtMoney(cur.s.due), ")") : "Enter the amount the client is paying now." }), fp.field), /* @__PURE__ */ React.createElement(PayWarn, { chk: warn }));
   }
   function ScheduleEditor({ rows, setRows, total, paidById, err }) {
     const paid = paidById || {}, t = Number(total) || 0, s = sum(rows, (r) => r.amount), left = roundMoney(t - s);
@@ -4166,10 +4828,10 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
         if (r.r.payment) open("receipt", { kind: "share", id: r.r.payment.id });
       }
     };
-    return /* @__PURE__ */ React.createElement(Modal, { title: "New share booking", sub: avail + " of " + settings.total_shares + " shares are still available.", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Cancel"), /* @__PURE__ */ React.createElement(Btn, { busy: busy === "save", disabled: !!busy || avail < 1, onClick: () => save(false) }, "Save booking"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy: busy === "pay", disabled: !!busy || avail < 1, onClick: () => save(true) }, "Save & add payment")) }, !priceSet && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "The default share price has not been configured yet (it is ৳0). Enter the price for this booking below, or ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => {
+    return /* @__PURE__ */ React.createElement(Modal, { title: "New share booking", sub: avail + " of " + settings.total_shares + " shares are still available.", size: "wide", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Cancel"), /* @__PURE__ */ React.createElement(Btn, { busy: busy === "save", disabled: !!busy || avail < 1 || omPreviewOn(useApp().db), title: omPreviewOn(useApp().db) ? "Creation currently disabled \u2014 preview only." : void 0, onClick: () => save(false) }, "Save booking"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy: busy === "pay", disabled: !!busy || avail < 1 || omPreviewOn(useApp().db), title: omPreviewOn(useApp().db) ? "Creation currently disabled \u2014 preview only." : void 0, onClick: () => save(true) }, "Save & add payment")) }, omPreviewOn(useApp().db) && /* @__PURE__ */ React.createElement(OmPreviewNote, null), !priceSet && /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "The default share price has not been configured yet (it is ৳0). Enter the price for this booking below, or ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => {
       onClose();
       go("settings");
-    } }, "set a default in Settings → Share Configuration"), "."), avail < 1 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "All ", settings.total_shares, " shares are sold. New bookings are blocked until the total is raised in Settings → Share Configuration."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Share allocation"), /* @__PURE__ */ React.createElement(Field, { label: "Shareholder", req: true, err: errs.shareholder_id, full: true, hint: "Search by name, phone number or shareholder ID." }, /* @__PURE__ */ React.createElement(SearchPick, { id: "bk-sh", value: f.shareholder_id, onChange: set("shareholder_id"), options: db.shareholders.filter((s) => live(s) && s.status === "Active").map((s) => ({ value: s.id, label: s.full_name, sub: s.code + (s.phone ? " · " + s.phone : ""), search: s.code + " " + s.phone + " " + (s.nid || "") + " " + (s.email || "") })), placeholder: "Type name, phone or ID", disabled: !!shareholderId, emptyText: "No shareholder matches. Use Add new shareholder." })), selSh && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Selected"), /* @__PURE__ */ React.createElement("span", null, selSh.full_name, " · ", selSh.code)), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Phone"), /* @__PURE__ */ React.createElement("span", null, selSh.phone || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Shares already held"), /* @__PURE__ */ React.createElement("span", null, selShC ? selShC.shares : 0))), !shareholderId && /* @__PURE__ */ React.createElement("div", { className: "full", style: { marginTop: -6 } }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "plus", onClick: () => open("shareholder", { onSaved: (row) => setF((x) => Object.assign({}, x, { shareholder_id: row.id })) }) }, "Add new shareholder")), /* @__PURE__ */ React.createElement(Field, { label: "Share quantity", req: true, err: errs.quantity }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "1", max: avail, step: "1", value: f.quantity, onChange: (e) => set("quantity")(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "Share price (per share)", req: true, err: errs.unit_price, hint: priceSet ? "Pre-filled from the Settings default of " + fmtMoney(settings.default_share_price) + ". You can change it for this booking." : "Default not configured. Enter the price for this booking." }, /* @__PURE__ */ React.createElement(Money, { value: f.unit_price, onChange: set("unit_price") })), /* @__PURE__ */ React.createElement(Field, { label: "Booking date", err: errs.booking_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.booking_date, onChange: set("booking_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Discount", err: errs.discount }, /* @__PURE__ */ React.createElement(Money, { value: f.discount, onChange: set("discount") })), /* @__PURE__ */ React.createElement(Field, { label: "Reference person" }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference_person, onChange: set("reference_person"), placeholder: "Who introduced this buyer" })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks" }, /* @__PURE__ */ React.createElement(Txt, { value: f.remarks, onChange: set("remarks") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Summary"), /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total value"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(total))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Discount"), /* @__PURE__ */ React.createElement("span", null, "− ", fmtMoney(disc))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Grand total"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(grand))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid with this booking"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(grand - paid)))), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Payment"), /* @__PURE__ */ React.createElement("div", { className: "full hint" }, "Recorded when you choose Save & add payment. Save booking creates the booking with no payment; add payments later from Share Sales or the shareholder profile."), /* @__PURE__ */ React.createElement(Field, { label: "Amount", err: errs.p_amount }, /* @__PURE__ */ React.createElement(Money, { value: p.amount, onChange: setP("amount"), placeholder: "0" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", err: errs.p_payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: p.payment_date, onChange: setP("payment_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method", err: errs.p_method }, /* @__PURE__ */ React.createElement(Sel, { value: p.method, onChange: setP("method"), options: METHODS, placeholder: "Select method (optional)" })), p.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details", hint: "Optional. For example: Cash, Company account." }, /* @__PURE__ */ React.createElement(Txt, { value: p.method_details, onChange: setP("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Reference", hint: "Optional", err: errs.p_reference }, /* @__PURE__ */ React.createElement(Txt, { value: p.reference, onChange: setP("reference"), placeholder: "Transaction / cheque reference" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment note", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: p.note, onChange: setP("note") }))));
+    } }, "set a default in Settings → Share Configuration"), "."), avail < 1 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "All ", settings.total_shares, " shares are sold. New bookings are blocked until the total is raised in Settings → Share Configuration."), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Share allocation"), /* @__PURE__ */ React.createElement(Field, { label: "Shareholder", req: true, err: errs.shareholder_id, full: true, hint: "Search by name, phone number or shareholder ID." }, /* @__PURE__ */ React.createElement(SearchPick, { id: "bk-sh", value: f.shareholder_id, onChange: set("shareholder_id"), options: db.shareholders.filter((s) => live(s) && s.status === "Active").map((s) => ({ value: s.id, label: s.full_name, sub: s.code + (s.phone ? " · " + s.phone : ""), search: s.code + " " + s.phone + " " + (s.nid || "") + " " + (s.email || "") })), placeholder: "Type name, phone or ID", disabled: !!shareholderId, emptyText: "No shareholder matches. Use Add new shareholder." })), selSh && /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Selected"), /* @__PURE__ */ React.createElement("span", null, selSh.full_name, " · ", selSh.code)), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Phone"), /* @__PURE__ */ React.createElement("span", null, selSh.phone || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Shares already held"), /* @__PURE__ */ React.createElement("span", null, selShC ? selShC.shares : 0))), !shareholderId && /* @__PURE__ */ React.createElement("div", { className: "full", style: { marginTop: -6 } }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "plus", onClick: () => open("shareholder", { onSaved: (row) => setF((x) => Object.assign({}, x, { shareholder_id: row.id })) }) }, "Add new shareholder")), /* @__PURE__ */ React.createElement(Field, { label: "Share quantity", req: true, err: errs.quantity }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "1", max: avail, step: "1", value: f.quantity, onChange: (e) => set("quantity")(e.target.value) })), /* @__PURE__ */ React.createElement(Field, { label: "Share price (per share)", req: true, err: errs.unit_price, hint: priceSet ? "Pre-filled from the Settings default of " + fmtMoney(settings.default_share_price) + ". You can change it for this booking." : "Default not configured. Enter the price for this booking." }, /* @__PURE__ */ React.createElement(Money, { value: f.unit_price, onChange: set("unit_price") })), /* @__PURE__ */ React.createElement(Field, { label: "Booking date", err: errs.booking_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.booking_date, onChange: set("booking_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Discount", err: errs.discount }, /* @__PURE__ */ React.createElement(Money, { value: f.discount, onChange: set("discount") })), /* @__PURE__ */ React.createElement(Field, { label: "Reference person" }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference_person, onChange: set("reference_person"), placeholder: "Who introduced this buyer" })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks" }, /* @__PURE__ */ React.createElement(Txt, { value: f.remarks, onChange: set("remarks") })), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Summary"), /* @__PURE__ */ React.createElement("div", { className: "full sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total value"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(total))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Discount"), /* @__PURE__ */ React.createElement("span", null, "− ", fmtMoney(disc))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Grand total"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(grand))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Paid with this booking"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(grand - paid)))), /* @__PURE__ */ React.createElement("div", { className: "frm-t" }, "Payment"), /* @__PURE__ */ React.createElement("div", { className: "full hint" }, "Recorded when you choose Save & add payment. Save booking creates the booking with no payment; add payments later from Share Sales or the shareholder profile."), /* @__PURE__ */ React.createElement(OmField, { f: p, set: setP, noFile: true, lockSh: f.shareholder_id }), /* @__PURE__ */ React.createElement(Field, { label: "Amount", err: errs.p_amount }, /* @__PURE__ */ React.createElement(Money, { value: p.amount, onChange: setP("amount"), placeholder: "0" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", err: errs.p_payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: p.payment_date, onChange: setP("payment_date"), max: TODAY })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method", err: errs.p_method }, /* @__PURE__ */ React.createElement(Sel, { value: p.method, onChange: setP("method"), options: METHODS, placeholder: "Select method (optional)" })), p.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details", hint: "Optional. For example: Cash, Company account." }, /* @__PURE__ */ React.createElement(Txt, { value: p.method_details, onChange: setP("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Reference", hint: "Optional", err: errs.p_reference }, /* @__PURE__ */ React.createElement(Txt, { value: p.reference, onChange: setP("reference"), placeholder: "Transaction / cheque reference" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment note", full: true }, /* @__PURE__ */ React.createElement(Txt, { value: p.note, onChange: setP("note") }))));
   }
   function UnitForm({ unit, onClose }) {
     const { db, S, run } = useApp();
@@ -4322,7 +4984,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
           setF((p) => Object.assign({}, p, { reason: "" }));
         } }, "Start a revision"))
       },
-      !el.ok && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, el.why),
+      !el.ok && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, el.why), /* @__PURE__ */ React.createElement(OmDeedNote, { planId }),
       /* @__PURE__ */ React.createElement("div", { className: "sumbox card", style: { padding: "4px 14px" }, "aria-label": "Second Party" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "Second Party"), " (this plan's ", party.label.toLowerCase(), ")"), /* @__PURE__ */ React.createElement("span", null, cust.full_name)), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, party.label, " ID"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, cust.code)), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "NID"), /* @__PURE__ */ React.createElement("span", null, nid4 ? "ending " + nid4 : "Not recorded")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Phone"), /* @__PURE__ */ React.createElement("span", null, String(cust.phone || "").trim() || "Not recorded")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Address"), /* @__PURE__ */ React.createElement("span", null, String(cust.address || "").trim() || "Not recorded"))),
       editing ? /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Estimated construction cost for this agreement (BDT)", err: errs.agreed_price, full: true, hint: "Optional. The reference estimate is " + fmtMoney(DEED_DEFAULT_PRICE) + " per unit. Edit it, or clear the box to leave the amount to be agreed. This is separate from the plan total of " + fmtMoney(plan.total_amount) + ", which is not changed." }, /* @__PURE__ */ React.createElement(Money, { value: f.agreed_price, onChange: set("agreed_price"), placeholder: "Leave blank if not agreed" })), /* @__PURE__ */ React.createElement(Field, { label: "Signing date", err: errs.signing_date, hint: "Optional. Leave blank to print a fill-in date." }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "date", value: f.signing_date, onChange: (e) => set("signing_date")(e.target.value) })), (needReason || rev) && /* @__PURE__ */ React.createElement(Field, { label: "Reason for this revision", req: true, err: errs.reason, full: true }, /* @__PURE__ */ React.createElement(Txt, { value: f.reason, onChange: set("reason"), placeholder: "Recorded in the audit log" }))) : /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "Revision ", last.revision_no, " of ", last.agreement_no, " is finalized and cannot be changed. To change it, start a revision. The earlier copy stays on record."),
       draft && !rev && /* @__PURE__ */ React.createElement(Card, { title: "Finalize", sub: "Finalizing freezes this copy: customer details and the total paid are stored as they are today." }, /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 8, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "deed-confirm", checked: ok, onChange: (e) => setOk(e.target.checked) }), " I have reviewed the preview and confirm this agreement is ready to finalize."), errs.confirm && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, errs.confirm), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, disabled: !ok || !el.ok, onClick: finalize }, "Finalize agreement"))),
@@ -4392,8 +5054,8 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     if (type === "nominee") return L(db.nominees, (n) => ({ value: n.id, label: n.name + " · nominee of " + shName(db, n.shareholder_id) }));
     if (type === "unit") return L(db.units, (u) => ({ value: u.id, label: u.code }));
     if (type === "booking") return L(db.share_bookings, (b) => ({ value: b.id, label: b.code + " · " + shName(db, b.shareholder_id) }));
-    if (type === "share_payment") return L(db.share_payments, (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
-    if (type === "construction_payment") return L(db.construction_payments, (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
+    if (type === "share_payment") return L(db.share_payments.filter(((v) => (p) => v(p) && !p._om)(Calc.sharePayVisible(db))), (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
+    if (type === "construction_payment") return L(db.construction_payments.filter((p) => !p._om), (p) => ({ value: p.id, label: p.receipt_no + " · " + shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount) }));
     if (type === "expense") return L(db.project_expenses, (e) => ({ value: e.id, label: e.code + " · " + e.description.slice(0, 40) }));
     return [];
   }
@@ -4428,14 +5090,14 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     const b = kind === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = kind === "cons" ? Calc.byId(db.units, p.unit_id) : null, cplan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, att = p.attachment_doc_id ? Calc.byId(db.documents, p.attachment_doc_id) : null;
     const plan = kind === "cons" ? Calc.byId(db.construction_plans, p.plan_id) : null, pc = plan ? Calc.plan(db, plan) : null, bs = b ? Calc.bookingSummary(db, b) : null;
     const tot = pc ? pc.total : bs ? bs.grand : 0, paid = pc ? pc.paid : bs ? bs.paid : 0, due = pc ? pc.due : bs ? bs.due : 0;
-    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, can(user, "editPayment") && Array.isArray(db.payment_revisions) && p.kind === "payment" && p.status === "Posted" && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => { onClose(); open("editPayment", { kind, id }); } }, "Edit payment"), /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? shName(db, p.shareholder_id) : buyerName(db, p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : u ? "Unit" : "Plan"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u ? u.code : cplan ? cplan.code : "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : ""), /* @__PURE__ */ React.createElement(RevNote, { db, kind, id }))));
+    return /* @__PURE__ */ React.createElement(Modal, { title: "Receipt " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(React.Fragment, null, can(user, "editPayment") && Array.isArray(db.payment_revisions) && p.kind === "payment" && p.status === "Posted" && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => { onClose(); open("editPayment", { kind, id }); } }, "Edit payment"), /* @__PURE__ */ React.createElement(Btn, { onClick: onClose }, "Done"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "printer", onClick: () => open("printPreview", { doc: "receipt", args: { kind, id } }) }, "Print Receipt (A4)")) }, /* @__PURE__ */ React.createElement("div", { className: "receipt" }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 44, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, db.settings[0].company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, db.settings[0].project_name)), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Received from"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? shName(db, p.shareholder_id) : buyerName(db, p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking" : u ? "Unit" : "Plan"), /* @__PURE__ */ React.createElement("span", null, kind === "share" ? b.code : u ? u.code : cplan ? cplan.code : "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(p.payment_date))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Method"), /* @__PURE__ */ React.createElement("span", null, methodLabel(p))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Reference"), /* @__PURE__ */ React.createElement("span", null, p.reference || "—")), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(p.amount)))), /* @__PURE__ */ React.createElement("div", { className: "sumbox" }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, kind === "share" ? "Booking total" : "Total contribution"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(tot))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Total paid to date"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(paid))), /* @__PURE__ */ React.createElement("div", { className: "sumrow big" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(due)))), /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Recorded by ", userName(db, p.created_by), " on ", fmtDateTime(p.created_at), ".", att ? " Attachment: " + att.file_name + "." : ""), /* @__PURE__ */ React.createElement(OmReceiptFiles, { p }), /* @__PURE__ */ React.createElement(RevNote, { db, kind, id }))));
   }
   function ReverseDialog({ kind, id, onClose }) {
     const { db, S, run, open } = useApp();
     const rec = Calc.byId(kind === "share" ? db.share_payments : kind === "cons" ? db.construction_payments : db.project_expenses, id);
     if (!rec) return null;
     const [reason, setReason] = useState("");
-    const [again, setAgain] = useState(true);
+    const [again, setAgain] = useState(!rec._om);
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
     const label = kind === "expense" ? rec.code : rec.receipt_no;
@@ -4458,7 +5120,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
     return /* @__PURE__ */ React.createElement(Modal, { title: "Reverse " + label, sub: "The original entry is kept. A negative entry cancels it out.", size: "narrow", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Reverse entry" }) }, /* @__PURE__ */ React.createElement("div", { className: "sumbox card", style: { padding: "4px 14px" } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Amount"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(rec.amount))), /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Date"), /* @__PURE__ */ React.createElement("span", null, fmtDate(rec.payment_date || rec.expense_date)))), /* @__PURE__ */ React.createElement(Field, { label: "Reason for reversal", req: true, err }, /* @__PURE__ */ React.createElement(Area, { value: reason, onChange: (v) => {
       setReason(v);
       setErr("");
-    }, placeholder: "For example: wrong amount entered" })), /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "rev-again", checked: again, onChange: (e) => setAgain(e.target.checked) }), "Record a corrected entry next"));
+    }, placeholder: "For example: wrong amount entered" })), !rec._om && /* @__PURE__ */ React.createElement("label", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "rev-again", checked: again, onChange: (e) => setAgain(e.target.checked) }), "Record a corrected entry next"));
   }
   function CustomerForm({ customer, onClose, onSaved }) {
     const { db, S, run } = useApp();
@@ -4638,7 +5300,7 @@ function editImpact(db, kind, p, f) {
   if (changed.some((k) => k === "amount" || k === "payment_date" || k === "reference")) {
     out.duplicate = others.filter((x) => x.kind === "payment" && x.status === "Posted" && x.amount === next.amount && x.payment_date === next.payment_date && norm(x.reference) === next.reference)[0] || null;
   }
-  if (kind === "cons" && Calc.deedsEnabled(db) && (changed.indexOf("amount") >= 0 || changed.indexOf("payment_date") >= 0)) {
+  if (kind === "cons" && !p._om && Calc.deedsEnabled(db) && (changed.indexOf("amount") >= 0 || changed.indexOf("payment_date") >= 0)) {
     out.deeds = (db.deed_agreements || []).filter((d) => d.plan_id === p.plan_id && d.status === "Final" && d.paid_as_of && (p.payment_date <= d.paid_as_of && (next.amount !== p.amount || next.payment_date > d.paid_as_of) || p.payment_date > d.paid_as_of && next.payment_date <= d.paid_as_of));
   }
   return out;
@@ -4661,7 +5323,7 @@ function RevNote({ db, kind, id, print }) {
   if (!revs.length) return null;
   const last = revs[0];
   const head = "Revision " + last.revision_no + ": corrected by " + userName(db, last.edited_by) + " on " + fmtDateTime(last.edited_at) + ". Reason: " + last.reason;
-  if (!print) return /* @__PURE__ */ React.createElement("div", { className: "hint revnote", "data-testid": "rev-note" }, head, /* @__PURE__ */ React.createElement("ul", { style: { margin: "4px 0 0 16px", padding: 0 } }, revs.map((r) => /* @__PURE__ */ React.createElement("li", { key: r.id }, "Rev " + r.revision_no + " (" + fmtDate(String(r.edited_at).slice(0, 10)) + "): " + revisionChanges(r).join("; ")))));
+  if (!print) return /* @__PURE__ */ React.createElement("div", { className: "hint revnote", "data-testid": "rev-note" }, head, omTag(Calc.byId(kind === "share" ? db.share_payments : db.construction_payments, id)), /* @__PURE__ */ React.createElement("ul", { style: { margin: "4px 0 0 16px", padding: 0 } }, revs.map((r) => /* @__PURE__ */ React.createElement("li", { key: r.id }, "Rev " + r.revision_no + " (" + fmtDate(String(r.edited_at).slice(0, 10)) + "): " + revisionChanges(r).join("; ")))));
   return /* @__PURE__ */ React.createElement("div", { className: "dnote revnote", "data-testid": "rev-note-print" }, /* @__PURE__ */ React.createElement("b", null, "This receipt shows corrected information. "), head, revs.map((r) => /* @__PURE__ */ React.createElement("div", { key: r.id }, "Rev " + r.revision_no + " (" + fmtDate(String(r.edited_at).slice(0, 10)) + "): " + revisionChanges(r).join("; "))));
 }
 function EditPaymentForm({ kind, id, onClose }) {
@@ -4712,12 +5374,70 @@ function EditPaymentForm({ kind, id, onClose }) {
   return /* @__PURE__ */ React.createElement(Modal, { title: "Edit payment " + p.receipt_no, sub: kind === "share" ? "Land share payment" : "Construction contribution payment", onClose, footer: /* @__PURE__ */ React.createElement(ModalFooter, { onClose, busy, onSubmit: submit, label: "Save correction" }) }, /* @__PURE__ */ React.createElement(Note, { tone: "info" }, "The old values are kept in the revision history. The receipt number does not change and the receipt will show the corrected information."), conflict && /* @__PURE__ */ React.createElement(Note, { tone: "bad" }, /* @__PURE__ */ React.createElement("b", null, "This payment was changed by someone else."), " The latest values are loaded when you press the button. Nothing of yours was saved. ", /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: reload }, "Load latest values")), /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Amount", req: true, err: errs.amount }, /* @__PURE__ */ React.createElement(Money, { value: f.amount, onChange: set("amount"), "data-testid": "ep-amount" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment date", req: true, err: errs.payment_date }, /* @__PURE__ */ React.createElement(DateIn, { value: f.payment_date, onChange: set("payment_date"), max: TODAY, "data-testid": "ep-date" })), /* @__PURE__ */ React.createElement(Field, { label: "Payment method" }, /* @__PURE__ */ React.createElement(Sel, { value: f.method, onChange: set("method"), options: METHODS, placeholder: "Select method (optional)", "data-testid": "ep-method" })), f.method === "Others" && /* @__PURE__ */ React.createElement(Field, { label: "Payment method details" }, /* @__PURE__ */ React.createElement(Txt, { value: f.method_details || "", onChange: set("method_details") })), /* @__PURE__ */ React.createElement(Field, { label: "Transaction / cheque reference" }, /* @__PURE__ */ React.createElement(Txt, { value: f.reference, onChange: set("reference"), "data-testid": "ep-ref" })), /* @__PURE__ */ React.createElement(Field, { label: "Note", full: true }, /* @__PURE__ */ React.createElement(Area, { value: f.note, onChange: set("note") })), /* @__PURE__ */ React.createElement(Field, { label: "Reason for the correction", req: true, full: true, err: errs.reason || errs.nochange }, /* @__PURE__ */ React.createElement(Area, { value: f.reason, onChange: set("reason"), placeholder: "For example: wrong amount typed, bank slip shows 40,000", "data-testid": "ep-reason" }))), rows.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "sumbox card", "data-testid": "ep-preview", style: { padding: "4px 14px", marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("b", null, "Before → after")), rows.map((k) => /* @__PURE__ */ React.createElement("div", { className: "sumrow", key: k }, /* @__PURE__ */ React.createElement("span", null, EDIT_FIELD_LABEL[k]), /* @__PURE__ */ React.createElement("span", null, dispVal(k, imp.prev[k], imp.prev), " → ", /* @__PURE__ */ React.createElement("b", null, dispVal(k, imp.next[k], imp.next))))), imp.due != null && !isNaN(imp.next.amount) && /* @__PURE__ */ React.createElement("div", { className: "sumrow" }, /* @__PURE__ */ React.createElement("span", null, "Remaining due after this edit"), /* @__PURE__ */ React.createElement("span", null, fmtMoney(roundMoney(imp.due - imp.next.amount))))), needs.over && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "This edit puts the account ", fmtMoney(imp.overpay), " over its total."), " It will show as an overpayment.", chk("over", "I confirm this is intended")), needs.dup && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Possible duplicate."), " Another payment with the same amount, date and reference exists (", imp.duplicate.receipt_no, ").", chk("dup", "I confirm this is a separate payment")), needs.deed && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, /* @__PURE__ */ React.createElement("b", null, "Finalized Deed of Agreement."), " Its saved paid-to-date figure will NOT change and will no longer match the payments. The impact is recorded with this correction.", chk("deed", "I understand and want to continue")), errs.confirm && /* @__PURE__ */ React.createElement("div", { className: "err", role: "alert" }, errs.confirm), hist.length > 0 && /* @__PURE__ */ React.createElement("details", { style: { marginTop: 10 }, "data-testid": "ep-history" }, /* @__PURE__ */ React.createElement("summary", null, "Revision history (", hist.length, ")"), hist.map((r) => /* @__PURE__ */ React.createElement("div", { className: "sumbox card", key: r.id, style: { padding: "6px 14px", marginTop: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, "Revision ", r.revision_no), " · ", fmtDateTime(r.edited_at), " · ", userName(db, r.edited_by)), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Reason: ", r.reason), revisionChanges(r).map((t, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "hint" }, t))))));
 }
 
+  const newReq = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : void 0;
+function ArchivedSalesPanel() {
+  const { db, user, open, confirm, run, S } = useApp();
+  const [sel, setSel] = useState(null);
+  const rows = useMemo(() => (db.share_bookings || []).filter((b) => b.archived_at).map((b) => ({ id: b.id, b, s: Calc.bookingSummary(db, b), name: shName(db, b.shareholder_id) })).sort((a, c) => String(c.b.archived_at).localeCompare(String(a.b.archived_at))), [db]);
+  const settings = db.settings[0], sold = Calc.sharesSold(db);
+  const restore = async (r) => {
+    const holder = Calc.byId(db.shareholders, r.b.shareholder_id), warn = [];
+    if (holder && holder.archived_at) warn.push("The shareholder is archived: restore the shareholder first.");
+    if (sold + r.b.quantity > settings.total_shares) warn.push("Only " + Math.max(0, settings.total_shares - sold) + " share(s) are available now and this sale needs " + r.b.quantity + ".");
+    const a = await confirm({ title: "Restore sale " + r.b.code + "?", message: "The sale returns with its original " + r.b.quantity + " share(s), " + r.s.payments.length + " payment row(s) (" + fmtMoney(r.s.paid) + " received, " + fmtMoney(r.s.due) + " due) and its documents. No payment is created or changed. The restore is recorded in the audit log." + omArchiveText(db, r.b.id) + (warn.length ? " " + warn.join(" ") : ""), confirmLabel: "Restore sale", reason: true });
+    if (a.ok) run(() => S.restoreShareSale(r.id, a.reason, newReq()), "Sale restored");
+  };
+  const cols = [
+    { key: "code", label: "Booking", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.b.code) },
+    { key: "name", label: "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(ShLink, { id: r.b.shareholder_id }) },
+    { key: "q", label: "Shares", align: "r", val: (r) => r.b.quantity, render: (r) => r.b.quantity },
+    { key: "g", label: "Grand total", align: "r", val: (r) => r.s.grand, render: (r) => M(r.s.grand) },
+    { key: "pd", label: "Paid (kept)", align: "r", val: (r) => r.s.paid, render: (r) => MIn(r.s.paid) },
+    { key: "du", label: "Due", align: "r", val: (r) => r.s.due, render: (r) => MDue(r.s.due) },
+    { key: "n", label: "Payments", align: "r", val: (r) => r.s.payments.length, render: (r) => r.s.payments.length },
+    { key: "at", label: "Archived", val: (r) => r.b.archived_at, render: (r) => /* @__PURE__ */ React.createElement("div", null, fmtDateTime(r.b.archived_at), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "by ", userName(db, r.b.archived_by))) },
+    { key: "why", label: "Reason", render: (r) => r.b.archive_reason || "—" },
+    { key: "actions", label: "Actions", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: (e) => {
+      e.stopPropagation();
+      setSel(sel === r.id ? null : r.id);
+    } }, sel === r.id ? "Hide payments" : "View payments"), /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "primary", onClick: (e) => {
+      e.stopPropagation();
+      restore(r);
+    } }, "Restore")) }
+  ];
+  const cur = rows.find((r) => r.id === sel);
+  const pcols = [
+    { key: "receipt", label: "Receipt", render: (p) => /* @__PURE__ */ React.createElement("button", { type: "button", className: "link mono", onClick: () => open("receipt", { kind: "share", id: p.id }) }, p.receipt_no, omTag(p), p.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "revpill", style: { marginLeft: 6 } }, "Rev " + p.revision_no)) },
+    { key: "date", label: "Date", val: (p) => p.payment_date, render: (p) => fmtDate(p.payment_date) },
+    { key: "amount", label: "Amount", align: "r", val: (p) => p.amount, render: (p) => M(p.amount) },
+    { key: "method", label: "Method", render: (p) => p.method || "—" },
+    { key: "ref", label: "Reference", render: (p) => p.reference || "—" },
+    { key: "kind", label: "Entry", render: (p) => p.kind === "reversal" ? "Reversal" : "Payment" },
+    { key: "status", label: "Status", render: (p) => /* @__PURE__ */ React.createElement(Status, { v: p.status }) }
+  ];
+  return /* @__PURE__ */ React.createElement(
+    React.Fragment,
+    null,
+    /* @__PURE__ */ React.createElement(PageHead, { title: "Archived sales", sub: "Sales archived with their payments kept. They are excluded from every active total, report, ledger and search. Only a Super Admin sees this page." }),
+    /* @__PURE__ */ React.createElement("div", { "data-testid": "archived-sales" }, /* @__PURE__ */ React.createElement(DataTable, { cols, rows, rowKey: (r) => r.id, pageSize: 10, initialSort: null, empty: { title: "No archived sales", text: "Archive a sale from the Share sales tab. Its payments stay on record.", icon: "archive" } })),
+    cur && /* @__PURE__ */ React.createElement("div", { className: "card", style: { marginTop: 16 }, "data-testid": "archived-sale-payments" }, /* @__PURE__ */ React.createElement("div", { className: "hint", style: { padding: "12px 16px" } }, "Original payment history of ", cur.b.code, " (" + cur.s.payments.length + " row(s), net " + fmtMoney(cur.s.paid) + ")"), /* @__PURE__ */ React.createElement(DataTable, { cols: pcols, rows: cur.s.payments.slice().sort((a, c) => a.payment_date.localeCompare(c.payment_date) || a.receipt_no.localeCompare(c.receipt_no)), rowKey: (p) => p.id, pageSize: 20, initialSort: null }))
+  );
+}
+function SalesPage(props) {
+  const { db, user, S } = useApp();
+  const [tab, setTab] = useState("active");
+  const canAS = !!(S.archiveShareSale && S.restoreShareSale && can(user, "archive") && can(user, "restore"));
+  if (!canAS) return /* @__PURE__ */ React.createElement(SalesPageActive, props);
+  const n = (db.share_bookings || []).filter((b) => b.archived_at).length;
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Tabs, { tabs: [{ id: "active", label: "Share sales" }, { id: "archived", label: "Archived sales", count: n }], value: tab, onChange: setTab }), tab === "active" ? /* @__PURE__ */ React.createElement(SalesPageActive, props) : /* @__PURE__ */ React.createElement(ArchivedSalesPanel, null));
+}
+
   const MODAL_REGISTRY = { customerArchive: CustomerArchiveForm, planUnit: AssignUnitForm, shareholder: ShareholderForm, sharePayment: SharePaymentForm, consPayment: ConsPaymentForm, booking: BookingForm, unit: UnitForm, plan: PlanForm, customer: CustomerForm, customerPlan: CustomerPlanForm, planTotal: PlanTotalForm, deed: DeedForm, expense: ExpenseForm, contractor: ContractorForm, document: DocumentForm, receipt: ReceiptModal, reverse: ReverseDialog, editPayment: EditPaymentForm, docView: DocView, exportPreview: ExportModal };
   function buildLedger(db, opts) {
     opts = opts || {};
-    const out = [], payVis = Calc.payVisible(db);
+    const out = [], payVis = Calc.payVisible(db), shVis = Calc.sharePayVisible(db);
     const add = (type, p) => {
-      if (!live(p) || type === "cons" && !payVis(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
+      if (!live(p) || type === "cons" && !payVis(p) || type === "share" && !shVis(p) || opts.shareholderId && p.shareholder_id !== opts.shareholderId || opts.customerId && p.customer_id !== opts.customerId) return;
       const b = type === "share" ? Calc.byId(db.share_bookings, p.booking_id) : null, u = type === "cons" ? Calc.byId(db.units, p.unit_id) : null;
       out.push({ id: p.id, type, rec: p, receipt: p.receipt_no, date: p.payment_date, shareholder_id: p.shareholder_id, customer_id: p.customer_id || null, who: type === "cons" ? buyerName(db, p) : shName(db, p.shareholder_id), target: type === "share" ? b ? b.code : "—" : u ? u.code : (Calc.byId(db.construction_plans, p.plan_id) || {}).code || "—", amount: p.amount, method: methodLabel(p), reference: p.reference || "—", status: p.kind === "reversal" ? "Reversal" : p.status, canReverse: p.kind === "payment" && p.status === "Posted" });
     };
@@ -4731,7 +5451,7 @@ function EditPaymentForm({ kind, id, onClose }) {
   function LedgerTable({ rows, showWho = true, pageSize = 10, empty }) {
     const { db, user, open } = useApp();
     const cols = [
-      { key: "receipt", label: "Receipt", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt, r.rec && r.rec.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "pill revpill", title: "Corrected " + r.rec.revision_no + " time(s)", style: { marginLeft: 6 } }, "Rev " + r.rec.revision_no)) },
+      { key: "receipt", label: "Receipt", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.receipt, omTag(r.rec), r.rec && r.rec.revision_no > 0 && /* @__PURE__ */ React.createElement("span", { className: "pill revpill", title: "Corrected " + r.rec.revision_no + " time(s)", style: { marginLeft: 6 } }, "Rev " + r.rec.revision_no)) },
       { key: "date", label: "Date", render: (r) => fmtDate(r.date) },
       { key: "type", label: "Type", render: (r) => /* @__PURE__ */ React.createElement(TypePill, { type: r.type }) },
       showWho && { key: "who", label: rows.some((r) => r.customer_id) ? "Shareholder / customer" : "Shareholder", render: (r) => r.customer_id ? /* @__PURE__ */ React.createElement(BuyerLink, { row: r.rec }) : /* @__PURE__ */ React.createElement(ShLink, { id: r.shareholder_id }) },
@@ -4752,6 +5472,7 @@ function EditPaymentForm({ kind, id, onClose }) {
   function Timeline({ logs: rawLogs, empty }) {
     const { db, user } = useApp();
     const logs = auditView(db, user, rawLogs);
+    if (!user || !can(user, "seeRoles")) return null;
     if (!logs.length) return /* @__PURE__ */ React.createElement(Empty, { icon: "clock", title: "No activity yet", text: empty || "Actions on this record will be listed here." });
     return /* @__PURE__ */ React.createElement("ul", { className: "tl" }, logs.map((a) => /* @__PURE__ */ React.createElement("li", { key: a.id }, /* @__PURE__ */ React.createElement("i", null), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, a.action), " ", /* @__PURE__ */ React.createElement("span", { className: "muted" }, "· ", a.entity_type.replace("_", " "))), /* @__PURE__ */ React.createElement("div", null, a.summary), a.reason && /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Reason: ", a.reason), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { fontSize: 12 } }, fmtDateTime(a.at), " · ", a.user_name, a.role ? " (" + a.role + ")" : "")))));
   }
@@ -4881,8 +5602,8 @@ function EditPaymentForm({ kind, id, onClose }) {
     const bookingIds = c.bookings.map((x) => x.b.id), unitIds = c.units.map((u) => u.id);
     const nomIds = db.nominees.filter((n) => n.shareholder_id === id).map((n) => n.id);
     const docs = db.documents.filter((d) => live(d) && (d.related_type === "shareholder" && d.related_id === id || d.related_type === "nominee" && nomIds.indexOf(d.related_id) >= 0 || d.related_type === "booking" && bookingIds.indexOf(d.related_id) >= 0 || d.related_type === "unit" && unitIds.indexOf(d.related_id) >= 0 || (d.related_type === "share_payment" || d.related_type === "construction_payment") && ledger.some((l) => l.id === d.related_id))).sort(byDateDesc("uploaded_at"));
-    const logs = db.audit_logs.filter((a) => a.shareholder_id === id).sort((a, b) => b.at.localeCompare(a.at));
-    const tabs = [{ id: "overview", label: "Overview" }, { id: "bookings", label: "Share bookings", count: c.bookings.length }, { id: "units", label: "Units", count: c.units.length }, { id: "construction", label: "Construction", count: c.plans.length }, { id: "payments", label: "Payments", count: ledger.length }, { id: "documents", label: "Documents", count: docs.length }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity history", count: logs.length }];
+    const logs = (can(user, "seeRoles") ? db.audit_logs : db.audit_logs.filter(saleAuditFilter(db))).filter((a) => a.shareholder_id === id).sort((a, b) => b.at.localeCompare(a.at));
+    const tabs = [{ id: "overview", label: "Overview" }, { id: "bookings", label: "Share bookings", count: c.bookings.length }, { id: "units", label: "Units", count: c.units.length }, { id: "construction", label: "Construction", count: c.plans.length }, { id: "payments", label: "Payments", count: ledger.length }, { id: "documents", label: "Documents", count: docs.length }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity history", count: logs.length }].filter((t) => t.id !== "activity" || can(user, "seeRoles"));
     const dcl = (i) => {
       const d = i ? Calc.byId(db.documents, i) : null;
       return d && !d.archived_at ? d : null;
@@ -4894,7 +5615,7 @@ function EditPaymentForm({ kind, id, onClose }) {
         pageSize: 8,
         rows: c.bookings.map((x) => ({ id: x.b.id, b: x.b, s: x.s })),
         empty: { title: "No share bookings", text: "Create the first booking for this shareholder.", icon: "tag", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("booking", { shareholderId: id }) }, "New booking") },
-        cols: [{ key: "code", label: "Booking", val: (r) => r.b.code, render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.b.code) }, { key: "date", label: "Date", val: (r) => r.b.booking_date, render: (r) => fmtDate(r.b.booking_date) }, { key: "q", label: "Shares", align: "r", val: (r) => r.b.quantity, render: (r) => r.b.quantity }, { key: "p", label: "Price", align: "r", val: (r) => r.b.unit_price, render: (r) => M(r.b.unit_price) }, { key: "d", label: "Discount", align: "r", val: (r) => r.s.discount, render: (r) => M(r.s.discount) }, { key: "g", label: "Grand total", align: "r", val: (r) => r.s.grand, render: (r) => M(r.s.grand) }, { key: "pd", label: "Paid", align: "r", val: (r) => r.s.paid, render: (r) => MIn(r.s.paid) }, { key: "du", label: "Due", align: "r", val: (r) => r.s.due, render: (r) => MDue(r.s.due) }, { key: "st", label: "Status", val: (r) => r.s.status, render: (r) => /* @__PURE__ */ React.createElement(Status, { v: r.s.status }) }, { key: "actions", label: "", align: "r", render: (r) => w && r.s.due > 4e-3 ? /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => open("sharePayment", { bookingId: r.b.id }) }, "Add payment") : null }]
+        cols: [{ key: "code", label: "Booking", val: (r) => r.b.code, render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.b.code) }, { key: "date", label: "Date", val: (r) => r.b.booking_date, render: (r) => fmtDate(r.b.booking_date) }, { key: "q", label: "Shares", align: "r", val: (r) => r.b.quantity, render: (r) => r.b.quantity }, { key: "p", label: "Price", align: "r", val: (r) => r.b.unit_price, render: (r) => M(r.b.unit_price) }, { key: "d", label: "Discount", align: "r", val: (r) => r.s.discount, render: (r) => M(r.s.discount) }, { key: "g", label: "Grand total", align: "r", val: (r) => r.s.grand, render: (r) => M(r.s.grand) }, { key: "pd", label: "Paid", align: "r", val: (r) => r.s.paid, render: (r) => /* @__PURE__ */ React.createElement(React.Fragment, null, MIn(r.s.paid), /* @__PURE__ */ React.createElement(OmPaidSub, { kind: "share", parentId: r.b.id })) }, { key: "du", label: "Due", align: "r", val: (r) => r.s.due, render: (r) => MDue(r.s.due) }, { key: "st", label: "Status", val: (r) => r.s.status, render: (r) => /* @__PURE__ */ React.createElement(Status, { v: r.s.status }) }, { key: "actions", label: "", align: "r", render: (r) => w && r.s.due > 4e-3 ? /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => open("sharePayment", { bookingId: r.b.id }) }, "Add payment") : null }]
       }
     ), tab === "units" && /* @__PURE__ */ React.createElement(
       DataTable,
@@ -4991,7 +5712,7 @@ function EditPaymentForm({ kind, id, onClose }) {
     if (!c || !live(c)) return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "Customer not found", text: can(user, "archive") ? "This record may have been archived." : "This record is not available.", action: /* @__PURE__ */ React.createElement(Btn, { onClick: () => go("customers") }, "Back to customers") }));
     const cs = Calc.customer(db, c), nom = cs.nominee, ledger = buildLedger(db, { customerId: id });
     const logs = db.audit_logs.filter((a) => a.customer_id === id).sort((a, b) => b.at.localeCompare(a.at));
-    const tabs = [{ id: "plans", label: "Plans & payments", count: cs.plans.length }, { id: "payments", label: "Payment history", count: ledger.length }, { id: "overview", label: "Profile" }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity", count: logs.length }];
+    const tabs = [{ id: "plans", label: "Plans & payments", count: cs.plans.length }, { id: "payments", label: "Payment history", count: ledger.length }, { id: "overview", label: "Profile" }, { id: "nominee", label: "Nominee" }, { id: "activity", label: "Activity", count: logs.length }].filter((t) => t.id !== "activity" || can(user, "seeRoles"));
     const archive = () => open("customerArchive", { customerId: id, onSaved: () => go("customers") });
     const archiveNom = async () => {
       const a = await confirm({ title: "Archive nominee?", message: "The nominee is hidden but kept for the audit trail.", confirmLabel: "Archive", danger: true, reason: true });
@@ -5001,14 +5722,14 @@ function EditPaymentForm({ kind, id, onClose }) {
       { key: "code", label: "Plan", render: (x) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, x.p.code) },
       { key: "unit", label: "Unit", render: (x) => x.p.unit_id ? planUnitLabel(db, x.p) : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "Not linked yet") },
       { key: "total", label: "Total", align: "r", render: (x) => M(x.s.total) },
-      { key: "paid", label: "Paid", align: "r", render: (x) => MIn(x.s.paid) },
+      { key: "paid", label: "Paid", align: "r", render: (x) => /* @__PURE__ */ React.createElement(React.Fragment, null, MIn(x.s.paid), /* @__PURE__ */ React.createElement(OmPaidSub, { kind: "cons", parentId: x.p.id })) },
       { key: "due", label: "Due", align: "r", render: (x) => MDue(x.s.due) },
       { key: "status", label: "Status", render: (x) => /* @__PURE__ */ React.createElement(Status, { v: x.s.status }) },
       { key: "actions", label: "", align: "r", render: (x) => /* @__PURE__ */ React.createElement("div", { className: "act" }, /* @__PURE__ */ React.createElement(Btn, { size: "sm", icon: "eye", onClick: () => go("construction", { planId: x.p.id }) }, "Open"), w && x.s.due > 4e-3 && /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => open("consPayment", { planId: x.p.id }) }, "Add payment")) }
     ].map((col) => Object.assign({}, col, { sortValue: void 0 }));
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", icon: "left", onClick: () => go("customers") }, "All customers")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 220 } }, /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("h1", { style: { fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 } }, c.full_name), /* @__PURE__ */ React.createElement(Status, { v: c.status })), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { className: "mono" + (fu.customer[c.id] ? " fu-id" : "") }, c.code), fu.customer[c.id] && /* @__PURE__ */ React.createElement(FuPill, null), c.phone ? " · " : "", /* @__PURE__ */ React.createElement("span", { className: "num" }, c.phone), c.profession ? " · " + c.profession : "", c.designation ? ", " + c.designation : "")), /* @__PURE__ */ React.createElement("div", { className: "chips" }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archive }, "Archive Customer & Related Records")))), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total construction contribution", value: fmtMoney(cs.total) }), /* @__PURE__ */ React.createElement(Stat, { label: "Total paid", tone: "in", value: fmtMoney(cs.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Remaining due", tone: cs.due > 4e-3 ? "due" : void 0, value: fmtMoney(cs.due) })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement(Tabs, { tabs, value: tab, onChange: setTab }), tab === "plans" && /* @__PURE__ */ React.createElement(DataTable, { cols: planCols, rows: cs.plans, pageSize: 10, onRowClick: (x) => go("construction", { planId: x.p.id }), empty: { title: "No construction plan yet", text: "Create a plan to set the total this customer will pay. A unit is not needed now.", icon: "wrench", action: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => open("customerPlan", { customerId: id }) }, "New construction plan") } }), tab === "payments" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(LedgerTable, { rows: ledger, showWho: false, pageSize: 10, empty: { title: "No payments yet", text: "Construction payments for this customer will appear here.", icon: "card" } })), tab === "overview" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Email"), /* @__PURE__ */ React.createElement("dd", null, c.email || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, c.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, c.address || "—"), /* @__PURE__ */ React.createElement("dt", null, "Profession"), /* @__PURE__ */ React.createElement("dd", null, c.profession || "—"), /* @__PURE__ */ React.createElement("dt", null, "Designation"), /* @__PURE__ */ React.createElement("dd", null, c.designation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Registered"), /* @__PURE__ */ React.createElement("dd", null, c.registration_date ? fmtDate(c.registration_date) : "—"), /* @__PURE__ */ React.createElement("dt", null, "Remarks"), /* @__PURE__ */ React.createElement("dd", null, c.remarks || "—"))), tab === "nominee" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, nom ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("dl", { className: "dl" }, /* @__PURE__ */ React.createElement("dt", null, "Name"), /* @__PURE__ */ React.createElement("dd", null, nom.name), /* @__PURE__ */ React.createElement("dt", null, "Relation"), /* @__PURE__ */ React.createElement("dd", null, nom.relation || "—"), /* @__PURE__ */ React.createElement("dt", null, "Phone"), /* @__PURE__ */ React.createElement("dd", null, nom.phone || "—"), /* @__PURE__ */ React.createElement("dt", null, "NID"), /* @__PURE__ */ React.createElement("dd", { className: "mono" }, nom.nid || "—"), /* @__PURE__ */ React.createElement("dt", null, "Address"), /* @__PURE__ */ React.createElement("dd", null, nom.address || "—")), /* @__PURE__ */ React.createElement("div", { className: "chips", style: { marginTop: 12 } }, w && /* @__PURE__ */ React.createElement(Btn, { icon: "edit", onClick: () => open("customer", { customer: c }) }, "Edit nominee"), can(user, "archive") && /* @__PURE__ */ React.createElement(Btn, { icon: "archive", onClick: archiveNom }, "Archive nominee"))) : /* @__PURE__ */ React.createElement(Empty, { icon: "users", title: "No nominee recorded", action: w && /* @__PURE__ */ React.createElement(Btn, { onClick: () => open("customer", { customer: c }) }, "Add nominee") })), tab === "activity" && /* @__PURE__ */ React.createElement("div", { className: "card-b" }, /* @__PURE__ */ React.createElement(Timeline, { logs }))));
   }
-  function SalesPage({ newBooking }) {
+  function SalesPageActive({ newBooking }) {
     const { db, user, go, open, confirm, run, S } = useApp();
     const w = can(user, "write");
     const fu = useFollowupToday();
@@ -5025,6 +5746,11 @@ function EditPaymentForm({ kind, id, onClose }) {
     const rows = all.filter((r) => (flt === "all" || r.s.status === flt) && (!q.trim() || (r.name + " " + r.code + " " + r.b.reference_person).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
     const totals = { value: sum(all, (r) => r.s.grand), paid: sum(all, (r) => r.s.paid), due: sum(all, (r) => r.s.due) };
     const archive = async (r) => {
+      if (S.archiveShareSale) {
+        const sale = await confirm({ title: "Archive sale " + r.code + "?", message: r.s.payments.length + " payment row(s) (" + fmtMoney(r.s.paid) + " received) and " + fmtMoney(r.s.due) + " due leave every active total, report, ledger, search and the dashboard, and " + r.b.quantity + " share(s) are released. Nothing is deleted: payments, receipts, revisions and documents are kept, " + r.name + " stays a shareholder, and a Super Admin can restore the sale. This does not record a refund." + omArchiveText(db, r.id), confirmLabel: "Archive sale", danger: true, reason: true });
+        if (sale.ok) run(() => S.archiveShareSale(r.id, sale.reason, typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : void 0), "Sale archived");
+        return;
+      }
       const a = await confirm({ title: "Archive booking " + r.code + "?", message: "Only bookings with no net payments can be archived. The record stays in the audit trail.", confirmLabel: "Archive", danger: true, reason: true });
       if (a.ok) run(() => S.archiveBooking(r.id, a.reason), "Booking archived");
     };
@@ -5037,7 +5763,7 @@ function EditPaymentForm({ kind, id, onClose }) {
       { key: "p", label: "Price", align: "r", val: (r) => r.b.unit_price, render: (r) => M(r.b.unit_price) },
       { key: "d", label: "Discount", align: "r", val: (r) => r.s.discount, render: (r) => M(r.s.discount) },
       { key: "g", label: "Grand total", align: "r", val: (r) => r.s.grand, render: (r) => M(r.s.grand) },
-      { key: "pd", label: "Paid", align: "r", val: (r) => r.s.paid, render: (r) => MIn(r.s.paid) },
+      { key: "pd", label: "Paid", align: "r", val: (r) => r.s.paid, render: (r) => /* @__PURE__ */ React.createElement(React.Fragment, null, MIn(r.s.paid), /* @__PURE__ */ React.createElement(OmPaidSub, { kind: "share", parentId: r.b.id })) },
       { key: "du", label: "Due", align: "r", val: (r) => r.s.due, render: (r) => MDue(r.s.due) },
       { key: "st", label: "Status", val: (r) => r.s.status, render: (r) => /* @__PURE__ */ React.createElement(Status, { v: r.s.status }) },
       { key: "actions", label: "Actions", align: "r", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "act" }, w && r.s.due > 4e-3 && /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: (e) => {
@@ -5048,7 +5774,7 @@ function EditPaymentForm({ kind, id, onClose }) {
         { label: "View shareholder", icon: "user", onClick: () => go("profile", { id: r.b.shareholder_id }) },
         { label: "View payments", icon: "card", onClick: () => go("profile", { id: r.b.shareholder_id, tab: "payments" }) },
         { label: "Upload document", icon: "upload", hidden: !w, onClick: () => open("document", { relatedType: "booking", relatedId: r.id, docType: "Booking Document" }) },
-        { label: "Archive booking", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
+        { label: S.archiveShareSale ? "Archive sale" : "Archive booking", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
       ] })) }
     ];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Share sales", sub: "Land share bookings and what has been collected against each. Construction money is not mixed in here.", flow: "in", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("booking", {}) }, "New share booking") }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: sold + " of " + settings.total_shares, sub: settings.total_shares - sold + " still available" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total booked value", value: fmtCompact(totals.value), title: fmtMoney(totals.value), sub: "After discounts" }), /* @__PURE__ */ React.createElement(Stat, { label: "Collected", tone: "in", value: fmtCompact(totals.paid), title: fmtMoney(totals.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Due", tone: totals.due > 4e-3 ? "due" : void 0, value: fmtCompact(totals.due), title: fmtMoney(totals.due), sub: "Not yet collected" })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search booking, shareholder, reference" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(
@@ -5119,7 +5845,7 @@ function EditPaymentForm({ kind, id, onClose }) {
       { key: "unit", label: "Unit", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "cell-name" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, r.unit), /* @__PURE__ */ React.createElement("span", { className: "mono" + (fu.plan[r.id] ? " fu-id" : "") }, r.p.code, fu.plan[r.id] && /* @__PURE__ */ React.createElement(FuPill, null)))) },
       { key: "name", label: all.some((r) => r.p.customer_id) ? "Shareholder / customer" : "Shareholder", render: (r) => /* @__PURE__ */ React.createElement(BuyerLink, { row: r.p }) },
       { key: "total", label: "Total contribution", align: "r", render: (r) => M(r.total) },
-      { key: "paid", label: "Total paid", align: "r", render: (r) => MIn(r.paid) },
+      { key: "paid", label: "Total paid", align: "r", render: (r) => /* @__PURE__ */ React.createElement(React.Fragment, null, MIn(r.paid), /* @__PURE__ */ React.createElement(OmPaidSub, { kind: "cons", parentId: r.id })) },
       { key: "due", label: "Remaining due", align: "r", render: (r) => MDue(r.due) },
       { key: "pct", label: "Progress", render: (r) => /* @__PURE__ */ React.createElement("div", { style: { minWidth: 110 } }, /* @__PURE__ */ React.createElement("span", { className: "num" }, fmtPct(r.pct)), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: r.s.pct, color: "var(--s-cons)", label: "Paid" }] })) },
       { key: "last", label: "Last payment", render: (r) => r.last ? fmtDate(r.last) : "—" },
@@ -5229,15 +5955,16 @@ function EditPaymentForm({ kind, id, onClose }) {
     const [q, setQ] = useState("");
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
+    const [omF, setOmF] = useState("all");
     const all = useMemo(() => buildLedger(db), [db]);
-    const rows = all.filter((r) => (type === "all" || r.type === type) && (!from || r.date >= from) && (!to || r.date <= to) && (!q.trim() || (r.receipt + " " + r.who + " " + r.target + " " + r.reference + " " + r.method).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
+    const rows = all.filter((r) => (omF === "all" || !db.omCap || (omF === "only_me") === !!(r.rec && r.rec._om)) && (type === "all" || r.type === type) && (!from || r.date >= from) && (!to || r.date <= to) && (!q.trim() || (r.receipt + " " + r.who + " " + r.target + " " + r.reference + " " + r.method).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0));
     const net = (list) => sum(list, (r) => r.amount);
     const exps = db.project_expenses.filter((e) => live(e) && (!from || e.expense_date >= from) && (!to || e.expense_date <= to) && (!q.trim() || (e.code + " " + e.description + " " + e.payee_name).toLowerCase().indexOf(q.trim().toLowerCase()) >= 0)).sort((a, b) => b.expense_date.localeCompare(a.expense_date) || b.code.localeCompare(a.code));
     const opts = [{ id: "all", label: "All money in", count: all.length }, { id: "share", label: "Land share", count: all.filter((r) => r.type === "share").length }, { id: "cons", label: "Construction", count: all.filter((r) => r.type === "cons").length }];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Payments", sub: "Every payment record. Money in from customers and money out to contractors are shown separately.", flow: dir, actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => dir === "in" ? open("printPreview", { doc: "payStatement", args: { ids: rows.map((r) => r.id), from, to } }) : open("printPreview", { doc: "expenseRecords", args: { ids: exps.map((e) => e.id) } }) }, "Print statement"), w && (dir === "in" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "plus", onClick: () => open("sharePayment", {}) }, "Land share payment"), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("consPayment", {}) }, "Construction payment")) : /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("expense", {}) }, "Add project expense"))) }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, dir === "in" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Stat, { label: "Land share received", tone: "in", value: fmtCompact(net(rows.filter((r) => r.type === "share"))), title: fmtMoney(net(rows.filter((r) => r.type === "share"))), flow: "in", sub: "Net of reversals" }), /* @__PURE__ */ React.createElement(Stat, { label: "Construction received", tone: "in", value: fmtCompact(net(rows.filter((r) => r.type === "cons"))), title: fmtMoney(net(rows.filter((r) => r.type === "cons"))), flow: "in", sub: "Net of reversals" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total money in", tone: "in", value: fmtCompact(net(rows)), title: fmtMoney(net(rows)), sub: rows.length + " entries" })) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Stat, { label: "Total money out", value: fmtCompact(sum(exps.filter(Calc.expenseCounts), (e) => e.amount)), title: fmtMoney(sum(exps.filter(Calc.expenseCounts), (e) => e.amount)), flow: "out", sub: "Excludes rejected" }), /* @__PURE__ */ React.createElement(Stat, { label: "Entries", value: exps.length }))), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(Seg, { options: [{ id: "in", label: "Money in" }, { id: "out", label: "Money out" }], value: dir, onChange: setDir }), /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: dir === "in" ? "Search receipt, shareholder, reference" : "Search description or payee" }), /* @__PURE__ */ React.createElement("div", { className: "chips" }, /* @__PURE__ */ React.createElement("label", { className: "muted", htmlFor: "pf" }, "From"), /* @__PURE__ */ React.createElement("input", { id: "pf", className: "inp", type: "date", value: from, max: to || void 0, onChange: (e) => setFrom(e.target.value), style: { width: 150 } }), /* @__PURE__ */ React.createElement("label", { className: "muted", htmlFor: "pt" }, "To"), /* @__PURE__ */ React.createElement("input", { id: "pt", className: "inp", type: "date", value: to, min: from || void 0, onChange: (e) => setTo(e.target.value), style: { width: 150 } }), (from || to) && /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", onClick: () => {
       setFrom("");
       setTo("");
-    } }, "Clear dates")), dir === "in" && /* @__PURE__ */ React.createElement(Chips, { options: opts, value: type, onChange: setType })), dir === "in" ? /* @__PURE__ */ React.createElement(LedgerTable, { rows, pageSize: 12, empty: { title: "No payments found", text: "Clear the search, dates or type filter.", icon: "card" } }) : /* @__PURE__ */ React.createElement(ExpenseTable, { rows: exps, pageSize: 12 })));
+    } }, "Clear dates")), dir === "in" && /* @__PURE__ */ React.createElement(Chips, { options: opts, value: type, onChange: setType }), dir === "in" && /* @__PURE__ */ React.createElement(OmFilter, { value: omF, onChange: setOmF })), dir === "in" ? /* @__PURE__ */ React.createElement(LedgerTable, { rows, pageSize: 12, empty: { title: "No payments found", text: "Clear the search, dates or type filter.", icon: "card" } }) : /* @__PURE__ */ React.createElement(ExpenseTable, { rows: exps, pageSize: 12 })));
   }
   function DocumentsPage() {
     const { db, user, open, confirm, run, S } = useApp();
@@ -5306,7 +6033,7 @@ function EditPaymentForm({ kind, id, onClose }) {
       { key: "at", label: "When", render: (a) => /* @__PURE__ */ React.createElement("span", { className: "num" }, fmtDateTime(a.at)) },
       { key: "user_name", label: "Who", render: (a) => /* @__PURE__ */ React.createElement("div", null, a.user_name, a.role && /* @__PURE__ */ React.createElement("div", { className: "muted", style: { fontSize: 12 } }, a.role)) },
       { key: "action", label: "Action", render: (a) => /* @__PURE__ */ React.createElement("b", null, a.action) },
-      { key: "entity_type", label: "Record", render: (a) => a.entity_type.replace("_", " ") },
+      { key: "entity_type", label: "Record", render: (a) => a.entity_type.replace("_om", "").replace("_", " ") + (a._om ? " \u00b7 Only Me" : "") },
       { key: "summary", label: "Summary", render: (a) => /* @__PURE__ */ React.createElement("div", { style: { minWidth: 260 } }, a.summary, a.reason && /* @__PURE__ */ React.createElement("div", { className: "muted", style: { fontSize: 12 } }, "Reason: ", a.reason)) }
     ];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Audit log", sub: "Every important action, who did it and when. Entries cannot be edited or deleted." }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search summary or reason" }), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 180 } }, /* @__PURE__ */ React.createElement(Sel, { value: act, onChange: setAct, options: uniq("action"), placeholder: "All actions", "aria-label": "Action" })), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 160 } }, /* @__PURE__ */ React.createElement(Sel, { value: ent, onChange: setEnt, options: uniq("entity_type").map((e) => ({ value: e, label: e.replace("_", " ") })), placeholder: "All record types", "aria-label": "Record type" })), /* @__PURE__ */ React.createElement("div", { style: { minWidth: 160 } }, /* @__PURE__ */ React.createElement(Sel, { value: usr, onChange: setUsr, options: db.users.map((u) => ({ value: u.id, label: u.name })), placeholder: "All users", "aria-label": "User" }))), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, pageSize: 14, onRowClick: (a) => open("audit", { id: a.id }), summary: rows.length + " of " + logs.length + " entries", empty: { title: "No entries match", text: "Clear the search or filters.", icon: "shield" } })));
@@ -5393,7 +6120,7 @@ function EditPaymentForm({ kind, id, onClose }) {
     const restore = async (r) => {
       const a = await confirm({ title: "Restore " + r.label + "?", message: "The record returns to the normal lists and the restore is recorded in the audit log.", confirmLabel: "Restore", reason: true });
       if (!a.ok) return;
-      await run(() => S.restoreRecord(r.table, r.rid, a.reason), "Record restored");
+      await run(() => r.table === "share_bookings" && S.restoreShareSale ? S.restoreShareSale(r.rid, a.reason) : S.restoreRecord(r.table, r.rid, a.reason), "Record restored");
     };
     const READY = [["Sign-in and roles", "users table maps to Supabase Auth plus a profiles.role column. Role checks already run in the service layer (can()).", "Wire up"], ["Row level security", "One policy per table by role: Admin all, Accountant read and insert, Viewer read. Ledger tables get no update or delete policy.", "Write policies"], ["File storage", "documents.storage_path points at a private bucket. MockStorage is the only class to swap.", "Create bucket"], ["Audit log", "audit_logs rows are written in the same batch as the change. In Postgres, run the batch as one RPC and block update/delete with a trigger.", "Add trigger"], ["Soft delete", "archived_at, archived_by and archive_reason exist on every table. There is no hard delete anywhere.", "Ready"], ["Reversals", "Payments and expenses are append-only. Corrections add a negative entry that points at the original.", "Ready"], ["Backups and recovery", "Enable daily backups and point-in-time recovery in the Supabase project settings.", "Configure"]];
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Settings", sub: auth ? "Project identity and share configuration." : "Project identity, share configuration, access and how this prototype maps onto the future database." }), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Project identity", sub: "Version 1 manages one project. Names are read from here, not fixed in the pages." }, /* @__PURE__ */ React.createElement("div", { className: "frm" }, /* @__PURE__ */ React.createElement(Field, { label: "Company name", req: true, err: errs.company_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.company_name, onChange: set("company_name"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Project name", req: true, err: errs.project_name }, /* @__PURE__ */ React.createElement(Txt, { value: f.project_name, onChange: set("project_name"), disabled: !admin }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center" } }, !admin && /* @__PURE__ */ React.createElement("span", { className: "hint" }, ADMIN_WORD === "Admin" ? "Only an Admin can change these." : "You cannot change these."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy, disabled: !admin, onClick: saveIdentity }, "Save identity"))), /* @__PURE__ */ React.createElement(Card, { title: "Share Configuration", sub: "Total shares and the default (reference) price per share. A new booking is pre-filled with this price, but it can be changed per booking and is saved with that booking. Changing the default never alters existing bookings." }, priceNum <= 0 && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "The default share price has not been configured yet. Enter it below when it is finalised. Until then, bookings can still be created by typing a price on each booking."), /* @__PURE__ */ React.createElement("div", { className: "frm", style: { marginTop: priceNum <= 0 ? 10 : 0 } }, /* @__PURE__ */ React.createElement(Field, { label: "Total shares in the project", req: true, err: errs.total_shares, hint: sold + " sold · " + Math.max(0, totalNum - sold) + " available" }, /* @__PURE__ */ React.createElement("input", { className: "inp", type: "number", min: "1", value: f.total_shares, onChange: (e) => set("total_shares")(e.target.value), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Default share price (per share)", req: true, err: errs.default_share_price, hint: priceNum > 0 ? "Total share value " + fmtMoney(totalNum * priceNum) : "Not configured (৳0)" }, /* @__PURE__ */ React.createElement(Money, { value: f.default_share_price, onChange: set("default_share_price"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Share name / type" }, /* @__PURE__ */ React.createElement(Txt, { value: f.share_name, onChange: set("share_name"), disabled: !admin })), /* @__PURE__ */ React.createElement(Field, { label: "Remarks", full: true }, /* @__PURE__ */ React.createElement(Area, { rows: 2, value: f.share_remarks, onChange: set("share_remarks"), disabled: !admin }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, alignItems: "center" } }, !admin && /* @__PURE__ */ React.createElement("span", { className: "hint" }, ADMIN_WORD === "Admin" ? "Only an Admin can change these." : "You cannot change these."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", busy: busy2, disabled: !admin, onClick: save }, "Save share configuration"))), /* @__PURE__ */ React.createElement(Card, { title: auth ? "Your account" : "Signed in as", sub: auth ? "Signed in as " + user.name + (can(user, "seeRoles") ? " (" + user.role + ")" : "") + "." : "Switch role to see what each one can do." }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 12 } }, !auth && /* @__PURE__ */ React.createElement(Field, { label: "Signed in as" }, /* @__PURE__ */ React.createElement(Sel, { value: user.id, onChange: setUserId, options: db.users.map((u) => ({ value: u.id, label: u.name + " · " + u.role })) })), !auth && /* @__PURE__ */ React.createElement("div", { className: "tbl-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "tbl" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Role"), /* @__PURE__ */ React.createElement("th", null, "Add records"), /* @__PURE__ */ React.createElement("th", null, "Reverse"), /* @__PURE__ */ React.createElement("th", null, "Approve"), /* @__PURE__ */ React.createElement("th", null, "Archive"), /* @__PURE__ */ React.createElement("th", null, "Settings"))), /* @__PURE__ */ React.createElement("tbody", null, (auth ? DB_ROLES : Object.keys(PERMS)).map((role) => /* @__PURE__ */ React.createElement("tr", { key: role }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("b", null, role)), ["write", "reverse", "approve", "archive", "settings"].map((p) => /* @__PURE__ */ React.createElement("td", { key: p }, PERMS[role].indexOf(p) >= 0 ? /* @__PURE__ */ React.createElement("span", { className: "badge t-ok" }, "Yes") : /* @__PURE__ */ React.createElement("span", { className: "muted" }, "No"))))))))))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement(Card, { title: auth ? "Database overview" : "Database readiness", sub: auth ? "Records currently held in each database table." : "Storage in use: " + repoKind + ". Nothing is saved between visits in this prototype." }, /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Tables and current rows"), /* @__PURE__ */ React.createElement("div", { className: "tbl-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "tbl" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "PostgreSQL table"), /* @__PURE__ */ React.createElement("th", { className: "r" }, "Rows"))), /* @__PURE__ */ React.createElement("tbody", null, TABLE_MAP.map((t) => /* @__PURE__ */ React.createElement("tr", { key: t[0] }, /* @__PURE__ */ React.createElement("td", { className: "mono" }, t[1]), /* @__PURE__ */ React.createElement("td", { className: "r" }, (db[t[0]] || []).length))))))), !auth && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Supabase checklist"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gap: 10 } }, READY.map((r) => /* @__PURE__ */ React.createElement("div", { key: r[0], style: { display: "grid", gap: 2 } }, /* @__PURE__ */ React.createElement("div", { className: "chips", style: { justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("b", null, r[0]), /* @__PURE__ */ React.createElement("span", { className: "badge " + (r[2] === "Ready" ? "t-ok" : "t-warn") }, r[2])), /* @__PURE__ */ React.createElement("span", { className: "muted" }, r[1]))))))), (!auth || canRestore) && /* @__PURE__ */ React.createElement(Card, { title: "Archived records", sub: "Archived items are hidden from lists and kept for the audit trail.", flush: true }, /* @__PURE__ */ React.createElement(DataTable, { rows: archived, pageSize: 6, empty: { title: "Nothing archived", text: "Archived shareholders, bookings and documents will be listed here.", icon: "archive" }, cols: [{ key: "table", label: "Record type", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.table) }, { key: "label", label: "Record" }, { key: "at", label: "Archived", render: (r) => fmtDateTime(r.at) }, { key: "by", label: "By" }, { key: "reason", label: "Reason" }].concat(canRestore ? [{ key: "restore", label: "", render: (r) => r.superseded || !S.canRestoreTable(r.table) ? /* @__PURE__ */ React.createElement("span", { className: "muted" }, "—") : /* @__PURE__ */ React.createElement(Btn, { size: "sm", onClick: () => restore(r) }, "Restore") }] : []) })));
@@ -5980,6 +6707,28 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
   function st(ctx) {
     return ctx.db.settings[0];
   }
+  /* C2: a db with every Only Me row (and its private files) removed, for customer-facing documents. */
+  const OM_INTERNAL_DOCS = { dashboard: 1, report: 1, project: 1, expenseRecords: 1, expenseVoucher: 1 };
+  function omPublicDb(db) {
+    if (!db || !db.omCap) return db;
+    const out = Object.assign({}, db);
+    out.share_payments = (db.share_payments || []).filter((p) => !p._om);
+    out.construction_payments = (db.construction_payments || []).filter((p) => !p._om);
+    ["shareholders", "nominees", "share_bookings", "construction_plans"].forEach((k) => { if (Array.isArray(db[k])) out[k] = db[k].filter((r) => !r._om); });
+    out.payment_revisions = (db.payment_revisions || []).filter((r) => !r._om);
+    out.omDocs = [];
+    out.omCap = void 0;
+    return out;
+  }
+  function printDb(db, doc, args) {
+    if (!db || !db.omCap || OM_INTERNAL_DOCS[doc]) return db;
+    if (doc === "receipt" && args) {
+      const rows = args.kind === "share" ? db.share_payments : db.construction_payments;
+      const r = (rows || []).filter((p) => p.id === args.id)[0];
+      if (r && r._om) return db;
+    }
+    return omPublicDb(db);
+  }
   function PrintPreview({ doc, args, onClose }) {
     const app = useApp();
     const def = PRINT_DOCS[doc];
@@ -6031,7 +6780,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
       return () => document.body.classList.remove("printing");
     }, []);
     if (!def) return null;
-    const ctx = { db: app.db, user: app.user, opts };
+    const ctx = { db: printDb(app.db, doc, args), user: app.user, opts };
     const el = def.render(ctx, args || {});
     const hasIds = !!(def.ids && def.ids(args || {}));
     const doPrint = () => {
@@ -6247,6 +6996,7 @@ PRINT_DOCS.shList = {
   MODAL_REGISTRY.projectImageEdit = ProjectImageEdit;
   const NAV = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+    { id: "integrity", label: "Integrity", icon: "shield", omOnly: true },
     { id: "shareholders", label: "Shareholders", icon: "users" },
     { id: "customers", label: "Customers", icon: "users", prodOnly: true },
     { id: "sales", label: "Share Sales", icon: "tag" },
@@ -6260,7 +7010,7 @@ PRINT_DOCS.shList = {
     { id: "audit", label: "Audit Log", icon: "shield" },
     { id: "settings", label: "Settings", icon: "sliders" }
   ];
-  const PAGES = { project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, customers: CustomersPage, customer: CustomerPage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
+  const PAGES = { integrity: IntegrityPage, project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, customers: CustomersPage, customer: CustomerPage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
   function initialRoute() {
     let h = "";
     try {
@@ -6304,7 +7054,7 @@ PRINT_DOCS.shList = {
       add("Customers", (db.customers || []).filter((c) => live(c) && has(c.full_name + " " + c.code + " " + c.phone + " " + c.nid)).map((c) => ({ key: c.id, label: c.full_name, sub: c.code + " · " + (c.phone || ""), act: () => go("customer", { id: c.id }) })));
       add("Units", db.units.filter((u) => live(u) && has(u.code)).map((u) => ({ key: u.id, label: "Unit " + u.code, sub: u.shareholder_id ? shName(db, u.shareholder_id) : "Available", act: () => go("units") })));
       add("Share bookings", db.share_bookings.filter((b) => live(b) && has(b.code)).map((b) => ({ key: b.id, label: b.code, sub: shName(db, b.shareholder_id), act: () => go("profile", { id: b.shareholder_id, tab: "bookings" }) })));
-      add("Payments", db.share_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "share", id: p.id }) })).concat(db.construction_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "cons", id: p.id }) }))));
+      add("Payments", db.share_payments.filter(((v) => (p) => v(p) && has(p.receipt_no + " " + p.reference))(Calc.sharePayVisible(db))).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "share", id: p.id }) })).concat(db.construction_payments.filter((p) => live(p) && has(p.receipt_no + " " + p.reference)).map((p) => ({ key: p.id, label: p.receipt_no, sub: shName(db, p.shareholder_id) + " · " + fmtMoney(p.amount), act: () => open("receipt", { kind: "cons", id: p.id }) }))));
       add("Contractors and suppliers", db.contractors.filter((c) => live(c) && has(c.name + " " + c.trade)).map((c) => ({ key: c.id, label: c.name, sub: c.trade, act: () => go("expenses", { tab: "contractors" }) })));
       add("Expenses", db.project_expenses.filter((e) => live(e) && has(e.code + " " + e.description)).map((e) => ({ key: e.id, label: e.code, sub: e.description, act: () => go("expenses") })));
       add("Documents", db.documents.filter((d) => live(d) && has(d.file_name + " " + d.code)).map((d) => ({ key: d.id, label: d.file_name, sub: d.code, act: () => open("docView", { id: d.id }) })));
@@ -6435,16 +7185,24 @@ PRINT_DOCS.shList = {
       }
     }, []);
     const ctx = useMemo(() => ({ db, user, S, toast, run, confirm, open, go, route, repoKind: repo.kind, setUserId: auth ? function() {
-    } : setUserId, auth: auth || null }), [db, user, S, toast, run, confirm, open, go, route, repo]);
+    } : setUserId, auth: auth || null, setOmView: repo.setOmView ? (v) => {
+      repo.setOmView(v);
+      const s2 = repo.snapshot();
+      dbRef.current = s2;
+      setDb(s2);
+    } : null }), [db, user, S, toast, run, confirm, open, go, route, repo]);
+    useEffect(() => {
+      if (db && user && route.name === "audit" && !can(user, "seeRoles")) go("dashboard");
+    }, [db, user, route.name]);
     useEffect(() => {
       if (db && user) document.title = db.settings[0].project_name + " · " + db.settings[0].company_name;
     }, [db]);
     if (loadErr) return /* @__PURE__ */ React.createElement("div", { className: "content" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(Empty, { icon: "alert", title: "The project data could not be loaded", text: String(loadErr.message || loadErr), action: /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => location.reload() }, "Reload") })));
     if (!db) return /* @__PURE__ */ React.createElement(LoadingShell, null);
     if (!user) return /* @__PURE__ */ React.createElement(AuthScreen, null, /* @__PURE__ */ React.createElement("h1", null, "Profile not found"), /* @__PURE__ */ React.createElement("p", { className: "muted" }, "Your sign-in is valid but your profile was not in the loaded data. Sign out and try again, or contact the project owner."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => auth.signOut() }, "Sign out"));
-    const st2 = db.settings[0], Page = PAGES[route.name] || DashboardPage, active = route.name === "profile" ? "shareholders" : route.name === "customer" ? "customers" : route.name;
+    const st2 = db.settings[0], Page = (route.name === "audit" && !can(user, "seeRoles") ? DashboardPage : PAGES[route.name]) || DashboardPage, active = route.name === "audit" && !can(user, "seeRoles") ? "dashboard" : route.name === "profile" ? "shareholders" : route.name === "customer" ? "customers" : route.name;
     const bottom = [{ id: "dashboard", label: "Home", icon: "dashboard" }, { id: "shareholders", label: "People", icon: "users" }, { id: "sales", label: "Sales", icon: "tag" }, { id: "payments", label: "Payments", icon: "card" }];
-    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => !n.prodOnly || auth).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
+    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => (!n.prodOnly || auth) && (!n.omOnly || db.omCap && db.omView !== "pa") && (n.id !== "audit" || can(user, "seeRoles"))).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(OmViewBar, null), /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(OmBanner, null), /* @__PURE__ */ React.createElement(OmRoleWatch, null), /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
       const C = MODAL_REGISTRY[m.name];
       return C ? /* @__PURE__ */ React.createElement(C, { key: m.id, ...m.props, onClose: () => setModals((x) => x.filter((y) => y.id !== m.id)) }) : null;
     }), conf && /* @__PURE__ */ React.createElement(ConfirmHost, { state: conf, onDone: (r) => {
