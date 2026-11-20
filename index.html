@@ -3301,7 +3301,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (pay && Number(pay.amount) > grand + 5e-3) throw new AppError("The first payment exceeds the booking total. Lower it or increase the share quantity.", "Payment too high", "OVERPAY");
       if (pay && pay.payment_date < input.booking_date) throw new AppError("The payment date cannot be earlier than the booking date.", "Check the dates", "VALIDATION");
       const tid = pay ? omTicketOf(pay) : null;
-      const r = await omRpc("om_create_booking_with_payment", { p_request_id: reqId(requestId), p_data: { shareholder_id: input.shareholder_id, quantity: Number(input.quantity), unit_price: Number(input.unit_price), discount: Number(input.discount || 0), booking_date: input.booking_date, reference_person: input.reference_person || "", remarks: input.remarks || "" }, p_payment: pay ? payJson(pay) : null, p_ticket_id: tid });
+      const r = await omRpc(privSh ? "om_create_private_booking" : "om_create_booking_with_payment", { p_request_id: reqId(requestId), p_data: { shareholder_id: input.shareholder_id, quantity: Number(input.quantity), unit_price: Number(input.unit_price), discount: Number(input.discount || 0), booking_date: input.booking_date, reference_person: input.reference_person || "", remarks: input.remarks || "" }, p_payment: pay ? payJson(pay) : null, p_ticket_id: tid });
       if (tid) {
         omUsed.add(tid);
         omDone(tid);
@@ -3323,7 +3323,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (chk.overpay && !input.allowOverpay) throw new AppError("This payment is " + fmtMoney(chk.overpay) + " more than the remaining due, counting Only Me payments.", "Needs confirmation", "NEEDS_CONFIRMATION");
       if (chk.duplicate && !input.allowDuplicate) throw new AppError("A payment with the same booking, amount, date and reference already exists (" + chk.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
       const tid = omTicketOf(input);
-      const r = await omRpc("om_add_share_payment", { p_request_id: reqId(requestId), p_booking_id: b.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
+      const r = await omRpc(b._om ? "om_add_private_share_payment" : "om_add_share_payment", { p_request_id: reqId(requestId), p_booking_id: b.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
       if (tid) {
         omUsed.add(tid);
         omDone(tid);
@@ -3345,7 +3345,7 @@ ${_}`}var A=class extends Error{constructor({message:e,code:t,cause:s,name:n}){v
       if (chk.overpay && !input.allowOverpay) throw new AppError("This payment is " + fmtMoney(chk.overpay) + " more than the remaining due of " + fmtMoney(chk.due) + ", counting Only Me payments.", "Needs confirmation", "NEEDS_CONFIRMATION");
       if (chk.duplicate && !input.allowDuplicate) throw new AppError("A payment with the same amount, date and reference already exists (" + chk.duplicate.receipt_no + ").", "Possible duplicate", "NEEDS_CONFIRMATION");
       const tid = omTicketOf(input);
-      const r = await omRpc("om_add_plan_payment", { p_request_id: reqId(requestId), p_plan_id: plan.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
+      const r = await omRpc(plan._om ? "om_add_private_plan_payment" : "om_add_plan_payment", { p_request_id: reqId(requestId), p_plan_id: plan.id, p_data: payJson(input), p_ticket_id: tid, p_confirmed_over: input.allowOverpay ? roundMoney(chk.overpay || 0) : 0, p_allow_duplicate: !!input.allowDuplicate });
       if (tid) {
         omUsed.add(tid);
         omDone(tid);
