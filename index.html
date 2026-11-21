@@ -14,24 +14,7 @@
   --font-display:'Newsreader','Noto Serif Bengali',Georgia,serif;
   --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:#131017; --surface:#1B1722; --surface-2:#241F2D; --ink:#EDEAF2; --ink-2:#BDB7C9; --ink-3:#8F889D; --line:#2E2839; --line-2:#3B3448;
-    --primary:#C084FC; --primary-2:#A78BFA; --primary-text:#D8B4FE; --primary-soft:#2A1B3D; --btn:#7E22CE; --btn-hover:#6B21A8; --btn-fg:#FFFFFF;
-    --ok:#4ADE80; --ok-bg:#12301D; --warn:#FBBF24; --warn-bg:#3A2A0B; --bad:#F87171; --bad-bg:#3B1416; --info:#C4B5FD; --info-bg:#2B2250; --mute:#BDB7C9; --mute-bg:#2A2533;
-    --s-share:#A855F7; --s-cons:#199E70; --s-out:#D95926; --s-recv:#6B6478;
-    --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-pop:0 10px 30px rgba(0,0,0,.5); --overlay:rgba(0,0,0,.6); --side-bg:#1B1722; --side-active:#2A1B3D;
-    color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#131017; --surface:#1B1722; --surface-2:#241F2D; --ink:#EDEAF2; --ink-2:#BDB7C9; --ink-3:#8F889D; --line:#2E2839; --line-2:#3B3448;
-  --primary:#C084FC; --primary-2:#A78BFA; --primary-text:#D8B4FE; --primary-soft:#2A1B3D; --btn:#7E22CE; --btn-hover:#6B21A8; --btn-fg:#FFFFFF;
-  --ok:#4ADE80; --ok-bg:#12301D; --warn:#FBBF24; --warn-bg:#3A2A0B; --bad:#F87171; --bad-bg:#3B1416; --info:#C4B5FD; --info-bg:#2B2250; --mute:#BDB7C9; --mute-bg:#2A2533;
-  --s-share:#A855F7; --s-cons:#199E70; --s-out:#D95926; --s-recv:#6B6478;
-  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-pop:0 10px 30px rgba(0,0,0,.5); --overlay:rgba(0,0,0,.6); --side-bg:#1B1722; --side-active:#2A1B3D;
-  color-scheme:dark;
-}
+:root{color-scheme:light}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{font-family:var(--font-body);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -526,6 +509,148 @@ tr.row-fu > td{background:var(--bad-bg)}
   .print-copy .doc{break-after:page;page-break-after:always}
   .print-copy .doc:last-child{break-after:auto;page-break-after:auto}
 }
+
+.paper{background:transparent;box-shadow:none;display:flex;flex-direction:column;gap:14px}
+.paper .doc{box-shadow:0 4px 24px rgba(0,0,0,.35)}
+.doc,.print-copy{-webkit-text-size-adjust:100%;text-size-adjust:100%;font-synthesis:none;text-rendering:geometricPrecision}
+.doc .dt .r,.doc .mono{font-variant-numeric:tabular-nums}
+.dt td:first-child{white-space:nowrap}
+/* ===== C9 premium light theme (light only; no dark palette anywhere) ===== */
+:root{--bg:#F6F5FA;--surface:#FFFFFF;--surface-2:#F4F2F9;--line:#E8E4F0;--line-2:#D8D3E4;--ink:#1B1830;--ink-2:#443F5A;--ink-3:#6A6580;--primary-soft:#F3EAFB;--side-active:#F3EAFB;--shadow:0 1px 2px rgba(35,20,60,.05),0 4px 14px rgba(35,20,60,.05);--shadow-pop:0 12px 36px rgba(35,20,60,.16),0 2px 8px rgba(35,20,60,.08);--overlay:rgba(27,24,48,.38)}
+body{background:var(--bg);letter-spacing:.005em}
+.side{background:#fff;border-right:1px solid var(--line);box-shadow:1px 0 0 rgba(35,20,60,.02)}
+.brand-co{color:#4C1D95}
+.nav button{border-radius:8px;transition:background .15s,color .15s}
+.nav button[aria-current="page"]{background:var(--side-active);color:#5B21B6;font-weight:600;box-shadow:inset 3px 0 0 #6B21A8}
+.top{background:rgba(255,255,255,.92);backdrop-filter:saturate(1.4) blur(8px);-webkit-backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--line)}
+.card{border-radius:12px;border:1px solid var(--line);box-shadow:var(--shadow);background:#fff}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--line)}
+.card-h h2,.card-h h3{font-size:14.5px;font-weight:650;color:var(--ink)}
+.btn{border-radius:8px;border-color:var(--line-2);background:#fff}
+.btn-primary{background:linear-gradient(180deg,#7A2BB8,#6B21A8);border-color:#5B21B6;box-shadow:0 1px 2px rgba(91,33,182,.3)}
+.btn-primary:hover:not(:disabled){background:linear-gradient(180deg,#6B21A8,#5B21B6)}
+input,select,textarea{background:#fff}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],input[type=search],select,textarea,.gsearch input{border-radius:8px}
+.gsearch input{background:#F6F5FA}
+.modal{border-radius:14px;background:#fff}
+.pop,.pop-fixed{border-radius:10px;background:#fff}
+.tbl{border-collapse:separate;border-spacing:0}
+.tbl th{background:#FAF8FD;color:#5A5470;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:650;padding:11px 14px;border-bottom:1px solid var(--line)}
+.tbl td{padding:13px 14px;border-bottom:1px solid #F0EDF6}
+.tbl tbody tr:hover{background:#FBF9FE}
+.tbl tbody tr:last-child td{border-bottom:0}
+.ph h1{color:#1B1830}
+.stat{border-radius:12px}
+/* KPI cards: colour-coded */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.kpi{position:relative;display:flex;flex-direction:column;gap:3px;padding:16px 18px 15px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;min-width:0}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k)}
+.kpi::after{content:"";position:absolute;right:-18px;top:-18px;width:74px;height:74px;border-radius:50%;background:var(--k);opacity:.07}
+.kpi-l{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.kpi-v{font-size:26px;font-weight:650;letter-spacing:-.01em;color:var(--kd);line-height:1.15;font-variant-numeric:tabular-nums}
+.kpi-s{font-size:12px;color:var(--ink-3)}
+.kpi-purple{--k:#7C3AED;--kd:#5B21B6}.kpi-blue{--k:#2563EB;--kd:#1D4ED8}.kpi-green{--k:#16A34A;--kd:#15803D}.kpi-amber{--k:#D97706;--kd:#B45309}.kpi-teal{--k:#0D9488;--kd:#0F766E}.kpi-rose{--k:#E11D48;--kd:#BE123C}
+.inv{display:flex;flex-direction:column;gap:14px}
+.inv-h{display:flex;align-items:baseline;gap:10px}.inv-h h2{font-family:var(--font-display);font-size:20px;font-weight:600}.inv-h span{color:var(--ink-3);font-size:13px}
+.inv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch}
+.inv-grid .inv-wide{grid-column:1/-1}
+.inv-grid .card-b,.inv-grid>.card>div:not(.card-h){padding:16px 20px}
+.cap{display:flex;flex-direction:column;gap:12px}
+.cap-name{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px}.cap-name span{color:var(--ink-3)}
+.cap-bar{display:flex;height:14px;background:#EFEAF7;border-radius:7px;overflow:hidden}
+.cap-share{background:#7C3AED}.cap-cons{background:#0D9488}
+.cap-bar i{display:block;height:100%}
+.cap-key{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}.cap-key span{display:inline-flex;align-items:center;gap:6px}.cap-key i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.cap-trend{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:end;height:96px;margin-top:4px}
+.cap-col{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;min-width:0}
+.cap-stack{width:100%;max-width:34px;flex:1;display:flex;flex-direction:column-reverse;justify-content:flex-start;border-radius:4px 4px 0 0;overflow:hidden;background:#F6F3FA;min-height:2px}
+.cap-stack i{display:block;width:100%}.cap-col small{font-size:10.5px;color:var(--ink-3)}
+.pipe{display:flex;flex-direction:column;gap:12px}
+.pipe-r{display:grid;grid-template-columns:130px minmax(0,1fr) 40px;gap:10px;align-items:center;font-size:13px}.pipe-r b{text-align:right}
+.pipe-bar,.mtr-bar,.sst-bar,.top5-bar{height:10px;background:#EFEAF7;border-radius:5px;overflow:hidden;display:flex}
+.pipe-bar i,.mtr-bar i,.sst-bar i,.top5-bar i{display:block;height:100%}
+.pc-mute{background:#B7B1C6}.pc-amber{background:#F59E0B}.pc-blue{background:#3B82F6}.pc-green{background:#22A55A}
+.mtrs{display:flex;flex-direction:column;gap:14px}.mtr{display:flex;flex-direction:column;gap:5px}.mtr-h{display:flex;justify-content:space-between;font-size:13px}.mtr small{color:var(--ink-3);font-size:11.5px}
+.mtr-purple{background:#7C3AED}.mtr-blue{background:#3B82F6}.mtr-green{background:#22A55A}.mtr-teal{background:#0D9488}
+.sst{display:flex;flex-direction:column;gap:14px}.sst-l{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px}
+.sst-l li{display:flex;align-items:center;gap:8px;font-size:13px}.sst-l li i{width:10px;height:10px;border-radius:3px}.sst-l li b{margin-left:auto}
+.top5{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.top5 li{display:grid;grid-template-columns:26px minmax(120px,220px) minmax(0,1fr) 130px;gap:12px;align-items:center;font-size:13px}
+.top5-n{width:24px;height:24px;border-radius:50%;background:var(--primary-soft);color:#5B21B6;display:grid;place-items:center;font-weight:700;font-size:12px}
+.top5-nm{text-align:left;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:none;padding:0}
+.top5-bar i{background:linear-gradient(90deg,#8B5CF6,#6B21A8)}.top5 li b{text-align:right}
+@media (max-width:900px){.inv-grid{grid-template-columns:minmax(0,1fr)}.top5 li{grid-template-columns:26px minmax(0,1fr) 110px}.top5-bar{display:none}.pipe-r{grid-template-columns:110px minmax(0,1fr) 34px}}
+/* light desk and viewer (no dark sections) */
+.pv{background:#E9E6F1}.pv-bar{background:#fff}
+.paper .doc{box-shadow:0 0 0 1px #CFCADB,0 6px 22px rgba(35,20,60,.18)}
+.lb{background:rgba(246,245,250,.97);color:var(--ink)}
+.lb-bar .btn{background:#fff;color:var(--ink);border-color:var(--line-2)}
+.lb-bar .btn-danger{background:#fff;color:var(--bad);border-color:var(--bad)}
+.lb-body img{box-shadow:0 4px 24px rgba(35,20,60,.18)}
+/* print documents: higher contrast */
+.doc,.print-copy{--ink:#111827;--ink-2:#1F2937;--ink-3:#374151;--line:#9CA3AF;color:#111827}
+.doc .kv dt{color:#374151}.doc .doc-foot{color:#374151;border-top-color:#9CA3AF}.doc .doc-proj,.doc .doc-id{color:#1F2937}
+.doc .dt th{color:#111827;background:#E9ECF1;border-bottom:1.5px solid #4B5563}.doc .dt td{border-bottom:1px solid #B8BEC8}
+.doc .dsec h3{color:#4C1D95;border-bottom-color:#9CA3AF}.doc .dnote{color:#374151}
+
+/* ===== C9.1: sidebar redesign, motion, avatars (all scoped; frontend only) ===== */
+.side{width:auto;padding:0;gap:0;background-color:#fff;background-image:linear-gradient(180deg,#fff 0%,#FBF9FE 100%);overflow:hidden}
+.shell{grid-template-columns:268px minmax(0,1fr)}
+.side .brand{padding:22px 20px 18px;margin:0;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#F8F3FD,#fff);display:flex;flex-direction:column;gap:2px}
+.side .brand-co{font-size:18px;font-weight:650;color:#4C1D95;margin-top:10px}
+.side .brand-sys{margin-top:3px;color:#7A7490;letter-spacing:.16em}
+.side .brand-proj{margin-top:12px;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid var(--line);font-weight:600;font-size:13px;color:#5B21B6;line-height:1.3}
+.side .nav{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 12px 10px;gap:3px;scrollbar-width:thin}
+.side .nav button{position:relative;gap:13px;padding:0 12px 0 10px;height:46px;min-height:46px;border-radius:11px;font-size:14.5px;font-weight:550;color:#3E3954;letter-spacing:.005em;transition:background .18s ease,color .18s ease,transform .18s ease;line-height:1.15}
+.side .nav button .nav-ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:#F3EFF9;color:#6B21A8;transition:background .18s ease,color .18s ease}
+.side .nav button .nav-ic svg{width:19px;height:19px}
+.side .nav button .nav-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.side .nav button:hover{background:#F6F1FC;color:#2D1B54}
+.side .nav button:hover .nav-ic{background:#EADFF8}
+.side .nav button[aria-current="page"]{background:linear-gradient(90deg,#F1E6FB,#F8F2FD);color:#4C1D95;font-weight:650;box-shadow:none}
+.side .nav button[aria-current="page"] .nav-ic{background:linear-gradient(135deg,#8B3FD0,#6B21A8);color:#fff;box-shadow:0 3px 8px rgba(107,33,168,.32)}
+.side .nav button[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:4px;border-radius:0 4px 4px 0;background:#6B21A8}
+.side .nav button:focus-visible{outline:2px solid #7C3AED;outline-offset:1px}
+.side .nav-sep{margin:8px 10px}
+.side .side-foot{margin:0;padding:12px 20px 16px;border-top:1px solid var(--line);background:#FBF9FE;font-size:11.5px;color:#6A6580;display:flex;align-items:center;gap:8px}
+.side .side-foot::before{content:"";width:8px;height:8px;border-radius:50%;background:#22A55A;flex:none}
+/* motion */
+@keyframes navIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes pgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes popIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes modIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes scrIn{from{opacity:0}to{opacity:1}}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes growY{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.side .nav>*{animation:navIn .38s cubic-bezier(.2,.7,.2,1) backwards}
+.side .nav>*:nth-child(1){animation-delay:30ms}.side .nav>*:nth-child(2){animation-delay:70ms}.side .nav>*:nth-child(3){animation-delay:110ms}.side .nav>*:nth-child(4){animation-delay:150ms}.side .nav>*:nth-child(5){animation-delay:190ms}.side .nav>*:nth-child(6){animation-delay:230ms}.side .nav>*:nth-child(7){animation-delay:270ms}.side .nav>*:nth-child(8){animation-delay:310ms}.side .nav>*:nth-child(9){animation-delay:350ms}.side .nav>*:nth-child(10){animation-delay:390ms}.side .nav>*:nth-child(n+11){animation-delay:430ms}
+.content>*:not(.dash){animation:pgIn .26s cubic-bezier(.2,.7,.2,1) backwards}
+.content>.dash{animation:pgIn .26s cubic-bezier(.2,.7,.2,1) backwards}
+.kpi{animation:pgIn .45s cubic-bezier(.2,.7,.2,1) backwards}
+.kpi-row>.kpi:nth-child(2){animation-delay:60ms}.kpi-row>.kpi:nth-child(3){animation-delay:120ms}.kpi-row>.kpi:nth-child(4){animation-delay:180ms}.kpi-row>.kpi:nth-child(5){animation-delay:240ms}.kpi-row>.kpi:nth-child(6){animation-delay:300ms}
+.inv-grid>.card{animation:pgIn .5s cubic-bezier(.2,.7,.2,1) backwards}
+.inv-grid>.card:nth-child(1){animation-delay:240ms}.inv-grid>.card:nth-child(2){animation-delay:300ms}.inv-grid>.card:nth-child(3){animation-delay:360ms}.inv-grid>.card:nth-child(4){animation-delay:420ms}.inv-grid>.card:nth-child(5){animation-delay:480ms}
+.cap-bar i,.pipe-bar i,.mtr-bar i,.sst-bar i,.top5-bar i{transform-origin:left center;animation:growX .85s cubic-bezier(.2,.7,.2,1) 350ms backwards}
+.cap-stack i{transform-origin:center bottom;animation:growY .8s cubic-bezier(.2,.7,.2,1) 420ms backwards}
+.pop,.pop-fixed{animation:popIn .16s ease-out;transform-origin:top right}
+.modal{animation:modIn .22s cubic-bezier(.2,.7,.2,1)}
+.scrim,.modal-bg,.modal-back{animation:scrIn .2s ease-out}
+.btn,.card{transition:border-color .15s ease,box-shadow .18s ease,background .15s ease}
+@media (prefers-reduced-motion:reduce){.side .nav>*,.content>*,.kpi,.inv-grid>.card,.cap-bar i,.pipe-bar i,.mtr-bar i,.sst-bar i,.top5-bar i,.cap-stack i,.pop,.pop-fixed,.modal,.scrim{animation:none!important}.side .nav button,.side{transition:none!important}}
+/* top shareholders avatar */
+.top5 li{grid-template-columns:26px 40px minmax(130px,220px) minmax(0,1fr) 130px}
+.top5-av{width:40px;height:40px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--primary-soft);box-shadow:0 0 0 2px #fff,0 0 0 3px #E4D8F3}
+.top5-av img{width:100%;height:100%;object-fit:cover;display:block}
+.top5-av .avatar{width:100%!important;height:100%!important;font-size:14px!important}
+.top5-bar{height:12px}
+.top5 li b{font-size:14px;color:#3B1670}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{width:min(300px,86vw)}
+  .top5 li{grid-template-columns:24px 36px minmax(0,1fr) 108px}.top5-av{width:36px;height:36px}
+}
+@media (max-width:420px){.top5 li{grid-template-columns:22px 34px minmax(0,1fr)}.top5 li b{grid-column:2/-1;text-align:left}}
+@media (max-width:900px){.top-r{flex-wrap:wrap;justify-content:flex-end;min-width:0;max-width:100%;gap:6px;margin-left:auto}}
 
 .revnote{margin-top:6px}.revpill{background:#FEF3C7;color:#92400E;font-size:10px;padding:1px 6px;border-radius:999px}.dnote.revnote{font-size:8pt;border-top:1px dashed #D1D5DB;padding-top:3px;margin-top:4px}
 </style>
@@ -5476,6 +5601,103 @@ function SalesPage(props) {
     if (!logs.length) return /* @__PURE__ */ React.createElement(Empty, { icon: "clock", title: "No activity yet", text: empty || "Actions on this record will be listed here." });
     return /* @__PURE__ */ React.createElement("ul", { className: "tl" }, logs.map((a) => /* @__PURE__ */ React.createElement("li", { key: a.id }, /* @__PURE__ */ React.createElement("i", null), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, a.action), " ", /* @__PURE__ */ React.createElement("span", { className: "muted" }, "· ", a.entity_type.replace("_", " "))), /* @__PURE__ */ React.createElement("div", null, a.summary), a.reason && /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Reason: ", a.reason), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { fontSize: 12 } }, fmtDateTime(a.at), " · ", a.user_name, a.role ? " (" + a.role + ")" : "")))));
   }
+  /* ---- Light dashboard blocks (read-only views of existing Calc results; no new calculations on the backend) ---- */
+  /* KPI value count-up: final text is always exactly the original string; skipped under reduced motion */
+  function CountText({ text }) {
+    const [shown, setShown] = useState(text);
+    useEffect(() => {
+      setShown(text);
+      if (reducedMotion()) return;
+      const m = String(text).match(/^(\D*?)(\d[\d,]*(?:\.\d+)?)(.*)$/);
+      if (!m) return;
+      const target = parseFloat(m[2].replace(/,/g, "")), dec = (m[2].split(".")[1] || "").length, comma = m[2].indexOf(",") >= 0;
+      if (!isFinite(target) || target === 0) return;
+      const fmt = (v) => { const s = v.toFixed(dec); return comma ? Number(s).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }) : s; };
+      let raf = 0, t0 = 0;
+      const step = (t) => { if (!t0) t0 = t; const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3); if (k < 1) { setShown(m[1] + fmt(target * e) + m[3]); raf = requestAnimationFrame(step); } else setShown(text); };
+      setShown(m[1] + fmt(0) + m[3]);
+      raf = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(raf);
+    }, [text]);
+    return shown;
+  }
+
+  function Kpi({ label, value, sub, tone, title }) {
+    const h = React.createElement;
+    return h("div", { className: "kpi kpi-" + (tone || "purple") }, h("span", { className: "kpi-l" }, label), h("b", { className: "kpi-v num", title: title || void 0 }, h(CountText, { text: value })), sub ? h("small", { className: "kpi-s" }, sub) : null);
+  }
+  function Meter({ label, pct, tone, note }) {
+    const h = React.createElement, p = Math.max(0, Math.min(100, isFinite(pct) ? pct : 0));
+    return h("div", { className: "mtr" }, h("div", { className: "mtr-h" }, h("span", null, label), h("b", { className: "num" }, Math.round(p) + "%")), h("div", { className: "mtr-bar", role: "img", "aria-label": label + " " + Math.round(p) + " percent" }, h("i", { className: "mtr-" + (tone || "purple"), style: { width: p + "%" } })), note ? h("small", null, note) : null);
+  }
+  function InvestmentOverview({ db, d, go }) {
+    const h = React.createElement;
+    const m = useMemo(() => {
+      const bk = db.share_bookings.filter(live).map((b) => ({ b, s: Calc.bookingSummary(db, b) }));
+      const act = bk.filter((x) => x.b.status !== "Cancelled"), canc = bk.length - act.length;
+      const st = { Unpaid: 0, Partial: 0, Paid: 0 }, cnt = { Unpaid: 0, Partial: 0, Paid: 0 };
+      act.forEach((x) => {
+        const k = x.s.status === "Overpaid" ? "Paid" : x.s.status;
+        st[k] += x.b.quantity;
+        cnt[k] += 1;
+      });
+      const top = db.shareholders.filter((s) => live(s) && !s._om).map((s) => ({ s, paid: Calc.shareholder(db, s).sharePaid })).filter((x) => x.paid > 0).sort((a, b) => b.paid - a.paid).slice(0, 5);
+      return { act: act.length, canc, st, cnt, top };
+    }, [db]);
+    const raised = d.shareCollected + d.consCollected, target = d.shareValue + d.consPlanned, scale = Math.max(target, raised, 1);
+    const trendMax = Math.max.apply(null, d.trend.map((t) => t.share + t.construction).concat([1]));
+    const pct = (a, b) => b > 0 ? a / b * 100 : 0;
+    const pipe = [{ k: "Available", v: d.availableShares, c: "mute" }, { k: "Booked, unpaid", v: m.st.Unpaid, c: "amber" }, { k: "Booked, part paid", v: m.st.Partial, c: "blue" }, { k: "Booked, fully paid", v: m.st.Paid, c: "green" }];
+    const topMax = m.top.length ? m.top[0].paid : 1;
+    const active = db.shareholders.filter((s) => live(s) && s.status === "Active").length;
+    return h("section", { className: "inv", "aria-label": "Investment overview" },
+      h("div", { className: "inv-h" }, h("h2", null, "Investment overview"), h("span", null, db.settings[0].project_name)),
+      h("div", { className: "kpi-row" },
+        h(Kpi, { label: "Capital raised", tone: "purple", value: fmtCompact(raised), title: fmtMoney(raised), sub: "Land share + construction" }),
+        h(Kpi, { label: "Share value (sold)", tone: "blue", value: fmtCompact(d.shareValue), title: fmtMoney(d.shareValue), sub: d.sharesSold + " of " + d.totalShares + " shares" }),
+        h(Kpi, { label: "Share collection", tone: "green", value: fmtCompact(d.shareCollected), title: fmtMoney(d.shareCollected), sub: Math.round(pct(d.shareCollected, d.shareValue)) + "% of sold value" }),
+        h(Kpi, { label: "Share due", tone: "amber", value: fmtCompact(d.shareDue), title: fmtMoney(d.shareDue), sub: "Receivable from shareholders" }),
+        h(Kpi, { label: "Construction collected", tone: "teal", value: fmtCompact(d.consCollected), title: fmtMoney(d.consCollected), sub: d.consPlanned ? "of " + fmtCompact(d.consPlanned) + " planned" : "None planned yet" }),
+        h(Kpi, { label: "Active shareholders", tone: "rose", value: String(active), sub: "of " + d.shareholders + " shareholders" })),
+      h("div", { className: "inv-grid" },
+        h(Card, { title: "Capital raised by project", sub: "Collected against the booked and planned total" },
+          h("div", { className: "cap" },
+            h("div", { className: "cap-name" }, h("b", null, db.settings[0].project_name), h("span", { className: "num" }, fmtMoney(raised), " of ", fmtMoney(target))),
+            h("div", { className: "cap-bar", role: "img", "aria-label": "Capital raised " + fmtMoney(raised) }, h("i", { className: "cap-share", style: { width: pct(d.shareCollected, scale) + "%" } }), h("i", { className: "cap-cons", style: { width: pct(d.consCollected, scale) + "%" } })),
+            h("div", { className: "cap-key" }, h("span", null, h("i", { className: "cap-share" }), "Land share ", fmtCompact(d.shareCollected)), h("span", null, h("i", { className: "cap-cons" }), "Construction ", fmtCompact(d.consCollected))),
+            h("div", { className: "cap-trend", "aria-label": "Collected per month" }, d.trend.map((t) => h("div", { key: t.key, className: "cap-col", title: t.label + ": " + fmtMoney(t.share + t.construction) }, h("div", { className: "cap-stack" }, h("i", { className: "cap-cons", style: { height: pct(t.construction, trendMax) + "%" } }), h("i", { className: "cap-share", style: { height: pct(t.share, trendMax) + "%" } })), h("small", null, t.label)))))),
+        h(Card, { title: "Share distribution pipeline", sub: d.totalShares + " shares in total" },
+          h("div", { className: "pipe" }, pipe.map((p) => h("div", { key: p.k, className: "pipe-r" }, h("span", null, p.k), h("div", { className: "pipe-bar" }, h("i", { className: "pc-" + p.c, style: { width: pct(p.v, d.totalShares) + "%" } })), h("b", { className: "num" }, p.v))))),
+        h(Card, { title: "Health metrics", sub: "How much of what is booked and planned is in" },
+          h("div", { className: "mtrs" },
+            h(Meter, { label: "Shares sold", pct: pct(d.sharesSold, d.totalShares), tone: "blue", note: d.sharesSold + " of " + d.totalShares }),
+            h(Meter, { label: "Share collection", pct: pct(d.shareCollected, d.shareValue), tone: "green", note: fmtCompact(d.shareCollected) + " of " + fmtCompact(d.shareValue) }),
+            h(Meter, { label: "Construction collection", pct: pct(d.consCollected, d.consPlanned), tone: "teal", note: d.consPlanned ? fmtCompact(d.consCollected) + " of " + fmtCompact(d.consPlanned) : "No plans yet" }),
+            h(Meter, { label: "Bookings fully paid", pct: pct(m.cnt.Paid, m.act), tone: "purple", note: m.cnt.Paid + " of " + m.act + " active bookings" }))),
+        h(Card, { title: "Sales share status", sub: m.act + " active, " + m.canc + " cancelled", actions: h(Btn, { size: "sm", variant: "ghost", onClick: () => go("sales") }, "All sales") },
+          h("div", { className: "sst" },
+            h("div", { className: "sst-bar", role: "img", "aria-label": "Active bookings by payment status" }, m.act ? [["Paid", "green"], ["Partial", "blue"], ["Unpaid", "amber"]].map((x) => h("i", { key: x[0], className: "pc-" + x[1], style: { width: pct(m.cnt[x[0]], m.act) + "%" } })) : null),
+            h("ul", { className: "sst-l" }, [["Paid", "green", m.cnt.Paid], ["Partly paid", "blue", m.cnt.Partial], ["Unpaid", "amber", m.cnt.Unpaid], ["Cancelled", "mute", m.canc]].map((x) => h("li", { key: x[0] }, h("i", { className: "pc-" + x[1] }), h("span", null, x[0]), h("b", { className: "num" }, x[2])))))),
+        h(Card, { title: "Top shareholders by capital invested", sub: "Land share money received", className: "inv-wide" },
+          m.top.length ? h("ol", { className: "top5" }, m.top.map((x, i) => h("li", { key: x.s.id }, h("span", { className: "top5-n" }, i + 1), h("span", { className: "top5-av" }, h(ShAvatar, { sh: x.s, size: 40 })), h("button", { type: "button", className: "link top5-nm", onClick: () => go("profile", { id: x.s.id }) }, x.s.full_name), h("div", { className: "top5-bar" }, h("i", { style: { width: pct(x.paid, topMax) + "%" } })), h("b", { className: "num" }, fmtMoney(x.paid))))) : h("p", { className: "muted" }, "No share payments recorded yet."))));
+  }
+  function ShareholderKpis({ all }) {
+    const act = all.filter((r) => r.s.status === "Active");
+    return React.createElement("div", { className: "kpi-row", "aria-label": "Shareholder summary" },
+      React.createElement(Kpi, { label: "Total shareholders", tone: "purple", value: String(all.length), sub: "On record" }),
+      React.createElement(Kpi, { label: "Active shareholders", tone: "green", value: String(act.length), sub: all.length - act.length + " inactive" }),
+      React.createElement(Kpi, { label: "Capital raised", tone: "blue", value: fmtCompact(sum(all, (r) => r.paid)), title: fmtMoney(sum(all, (r) => r.paid)), sub: "Land share money received" }),
+      React.createElement(Kpi, { label: "Active shares", tone: "teal", value: String(sum(act, (r) => r.shares)), sub: "Held by active shareholders" }));
+  }
+  function SalesKpis({ all, totals }) {
+    const actv = all.filter((r) => r.b.status !== "Cancelled");
+    return React.createElement("div", { className: "kpi-row", "aria-label": "Sales summary" },
+      React.createElement(Kpi, { label: "Total sales", tone: "purple", value: String(all.length), sub: "Bookings on record" }),
+      React.createElement(Kpi, { label: "Active sales", tone: "green", value: String(actv.length), sub: all.length - actv.length + " cancelled" }),
+      React.createElement(Kpi, { label: "Total value", tone: "blue", value: fmtCompact(totals.value), title: fmtMoney(totals.value), sub: fmtCompact(totals.paid) + " received" }),
+      React.createElement(Kpi, { label: "Outstanding dues", tone: totals.due > 4e-3 ? "amber" : "green", value: fmtCompact(totals.due), title: fmtMoney(totals.due), sub: "Receivable on bookings" }));
+  }
+
   function DashboardPage() {
     const { db, go, open } = useApp();
     const d = useMemo(() => Calc.dashboard(db), [db]);
@@ -5490,7 +5712,7 @@ function SalesPage(props) {
       }, 1400);
       return () => clearTimeout(t);
     }, []);
-    return /* @__PURE__ */ React.createElement("div", { className: "dash" + (first && !reducedMotion() ? " dash-in" : "") }, /* @__PURE__ */ React.createElement(PageHead, { title: "Dashboard", sub: "Money in and money out for " + db.settings[0].project_name + ".", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RowMenu, { label: "Print options", icon: "printer", text: "Print", items: [{ label: "Dashboard summary (all sections)", icon: "printer", onClick: () => open("printPreview", { doc: "dashboard", args: {} }) }].concat(Object.keys(DASH_SECTIONS).map((k) => ({ label: "Section: " + DASH_SECTIONS[k], icon: "printer", onClick: () => open("printPreview", { doc: "dashboard", args: { section: k } }) }))) }), /* @__PURE__ */ React.createElement(Btn, { icon: "tag", onClick: () => go("sales", { newBooking: true }) }, "New share booking"), /* @__PURE__ */ React.createElement(Btn, { icon: "receipt", onClick: () => go("expenses", { newExpense: true }) }, "Add project expense")) }), !d.priceSet && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "The default share price is not set (৳0), so the reference Total share value shows ৳0. Bookings can still be entered with their own price. The default can be set in ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => go("settings") }, "Settings → Share Configuration"), "."), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total shareholders", value: d.shareholders, num: d.shareholders, sub: active + " active" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total shares", value: d.totalShares, num: d.totalShares, sub: "Fixed project total" }), /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: d.sharesSold, num: d.sharesSold, sub: d.sharesSold ? "of " + d.totalShares : "No bookings yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Shares available", value: avail, num: avail, sub: "Total minus sold" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share price", value: fmtMoney(d.sharePrice), num: d.sharePrice, fmt: fmtMoney, sub: d.priceSet ? "Default / reference price" : "Default not configured" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total share value", value: fmtCompact(d.totalShareValue), num: d.totalShareValue, fmt: fmtCompact, title: fmtMoney(d.totalShareValue), sub: d.priceSet ? d.totalShares + " shares at the default price" : "Needs a default price" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share collection", tone: "in", value: fmtCompact(d.shareCollected), num: d.shareCollected, fmt: fmtCompact, title: fmtMoney(d.shareCollected), flow: "in", sub: d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + "% of sold value (saved prices)" : "No payments yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share due", tone: d.shareDue > 4e-3 ? "due" : void 0, value: fmtCompact(d.shareDue), num: d.shareDue, fmt: fmtCompact, title: fmtMoney(d.shareDue), sub: "Receivable from shareholders" }), /* @__PURE__ */ React.createElement(Stat, { label: "Construction contributions", tone: "in", value: fmtCompact(d.consCollected), num: d.consCollected, fmt: fmtCompact, title: fmtMoney(d.consCollected), flow: "in", sub: d.consPlanned ? "of " + fmtCompact(d.consPlanned) + " planned" : "None set yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Construction contribution due", tone: d.consDue > 4e-3 ? "due" : void 0, value: fmtCompact(d.consDue), num: d.consDue, fmt: fmtCompact, title: fmtMoney(d.consDue), sub: "Receivable on plans" }), /* @__PURE__ */ React.createElement(Stat, { label: "Project construction expense", value: fmtCompact(d.expense), num: d.expense, fmt: fmtCompact, title: fmtMoney(d.expense), flow: "out", sub: d.pendingApprovalAmount ? fmtCompact(d.pendingApprovalAmount) + " awaiting approval" : d.expense ? "All approved" : "No expenses yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Available project fund", value: fmtCompact(d.fund), num: d.fund, fmt: fmtCompact, title: fmtMoney(d.fund), flow: "net", sub: "Collections minus expenses" })), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Financial overview", sub: "Cash received, cash spent and what is still owed" }, !(d.shareCollected || d.consCollected || d.expense || d.receivables) ? /* @__PURE__ */ React.createElement(Empty, { title: "No transactions yet", text: "Collections, expenses and receivables will appear here once records are added.", icon: "chart" }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "io-cols" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", null, /* @__PURE__ */ React.createElement(Flow, { dir: "in" })), /* @__PURE__ */ React.createElement(HBars, { stacked: true, items: overviewItems.inn, max: scale })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", null, /* @__PURE__ */ React.createElement(Flow, { dir: "out" })), /* @__PURE__ */ React.createElement(HBars, { stacked: true, items: overviewItems.out, max: scale }))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Outstanding receivables · ", fmtMoney(d.receivables)), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: d.shareDue / (d.receivables || 1) * 100, color: "var(--s-share)", label: "Share due" }, { pct: d.consDue / (d.receivables || 1) * 100, color: "var(--s-cons)", label: "Construction due" }] }), /* @__PURE__ */ React.createElement("div", { className: "legend", style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { style: { background: "var(--s-share)" } }), "Share due ", fmtMoney(d.shareDue)), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { style: { background: "var(--s-cons)" } }), "Construction due ", fmtMoney(d.consDue)))))), /* @__PURE__ */ React.createElement(Card, { title: "Payment collection trend", sub: "Last six months" }, !d.trend.some((t) => t.share || t.construction || t.expense) ? /* @__PURE__ */ React.createElement(Empty, { title: "No transactions yet", text: "The monthly trend appears after the first payment or expense.", icon: "chart" }) : /* @__PURE__ */ React.createElement(TrendChart, { data: d.trend, series: [{ key: "share", label: "Share collection", color: "var(--s-share)" }, { key: "construction", label: "Construction collection", color: "var(--s-cons)" }, { key: "expense", label: "Project expenses", color: "var(--s-out)", dash: "5 4" }] }))), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Construction expense summary", sub: "Approved spending by category", actions: /* @__PURE__ */ React.createElement(Flow, { dir: "out" }) }, /* @__PURE__ */ React.createElement(HBars, { items: d.byCategory.slice(0, 8).map((x) => ({ label: x.label, value: x.value, color: "var(--s-out)" })), max: d.byCategory.length ? d.byCategory[0].value : 1, empty: "No approved expenses yet." })), /* @__PURE__ */ React.createElement(Card, { title: "Construction contributions outstanding", sub: "Largest amounts still to be received. Clients pay any amount, any time.", flush: true, actions: /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", onClick: () => go("construction") }, "All contributions") }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "dash" + (first && !reducedMotion() ? " dash-in" : "") }, /* @__PURE__ */ React.createElement(PageHead, { title: "Dashboard", sub: "Money in and money out for " + db.settings[0].project_name + ".", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RowMenu, { label: "Print options", icon: "printer", text: "Print", items: [{ label: "Dashboard summary (all sections)", icon: "printer", onClick: () => open("printPreview", { doc: "dashboard", args: {} }) }].concat(Object.keys(DASH_SECTIONS).map((k) => ({ label: "Section: " + DASH_SECTIONS[k], icon: "printer", onClick: () => open("printPreview", { doc: "dashboard", args: { section: k } }) }))) }), /* @__PURE__ */ React.createElement(Btn, { icon: "tag", onClick: () => go("sales", { newBooking: true }) }, "New share booking"), /* @__PURE__ */ React.createElement(Btn, { icon: "receipt", onClick: () => go("expenses", { newExpense: true }) }, "Add project expense")) }), !d.priceSet && /* @__PURE__ */ React.createElement(Note, { tone: "warn" }, "The default share price is not set (৳0), so the reference Total share value shows ৳0. Bookings can still be entered with their own price. The default can be set in ", /* @__PURE__ */ React.createElement("button", { type: "button", className: "link", onClick: () => go("settings") }, "Settings → Share Configuration"), "."), /* @__PURE__ */ React.createElement(InvestmentOverview, { db, d, go }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Total shareholders", value: d.shareholders, num: d.shareholders, sub: active + " active" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total shares", value: d.totalShares, num: d.totalShares, sub: "Fixed project total" }), /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: d.sharesSold, num: d.sharesSold, sub: d.sharesSold ? "of " + d.totalShares : "No bookings yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Shares available", value: avail, num: avail, sub: "Total minus sold" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share price", value: fmtMoney(d.sharePrice), num: d.sharePrice, fmt: fmtMoney, sub: d.priceSet ? "Default / reference price" : "Default not configured" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total share value", value: fmtCompact(d.totalShareValue), num: d.totalShareValue, fmt: fmtCompact, title: fmtMoney(d.totalShareValue), sub: d.priceSet ? d.totalShares + " shares at the default price" : "Needs a default price" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share collection", tone: "in", value: fmtCompact(d.shareCollected), num: d.shareCollected, fmt: fmtCompact, title: fmtMoney(d.shareCollected), flow: "in", sub: d.shareValue ? Math.round(d.shareCollected / d.shareValue * 100) + "% of sold value (saved prices)" : "No payments yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Share due", tone: d.shareDue > 4e-3 ? "due" : void 0, value: fmtCompact(d.shareDue), num: d.shareDue, fmt: fmtCompact, title: fmtMoney(d.shareDue), sub: "Receivable from shareholders" }), /* @__PURE__ */ React.createElement(Stat, { label: "Construction contributions", tone: "in", value: fmtCompact(d.consCollected), num: d.consCollected, fmt: fmtCompact, title: fmtMoney(d.consCollected), flow: "in", sub: d.consPlanned ? "of " + fmtCompact(d.consPlanned) + " planned" : "None set yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Construction contribution due", tone: d.consDue > 4e-3 ? "due" : void 0, value: fmtCompact(d.consDue), num: d.consDue, fmt: fmtCompact, title: fmtMoney(d.consDue), sub: "Receivable on plans" }), /* @__PURE__ */ React.createElement(Stat, { label: "Project construction expense", value: fmtCompact(d.expense), num: d.expense, fmt: fmtCompact, title: fmtMoney(d.expense), flow: "out", sub: d.pendingApprovalAmount ? fmtCompact(d.pendingApprovalAmount) + " awaiting approval" : d.expense ? "All approved" : "No expenses yet" }), /* @__PURE__ */ React.createElement(Stat, { label: "Available project fund", value: fmtCompact(d.fund), num: d.fund, fmt: fmtCompact, title: fmtMoney(d.fund), flow: "net", sub: "Collections minus expenses" })), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Financial overview", sub: "Cash received, cash spent and what is still owed" }, !(d.shareCollected || d.consCollected || d.expense || d.receivables) ? /* @__PURE__ */ React.createElement(Empty, { title: "No transactions yet", text: "Collections, expenses and receivables will appear here once records are added.", icon: "chart" }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "io-cols" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", null, /* @__PURE__ */ React.createElement(Flow, { dir: "in" })), /* @__PURE__ */ React.createElement(HBars, { stacked: true, items: overviewItems.inn, max: scale })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h4", null, /* @__PURE__ */ React.createElement(Flow, { dir: "out" })), /* @__PURE__ */ React.createElement(HBars, { stacked: true, items: overviewItems.out, max: scale }))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { className: "sect-t" }, "Outstanding receivables · ", fmtMoney(d.receivables)), /* @__PURE__ */ React.createElement(Progress, { parts: [{ pct: d.shareDue / (d.receivables || 1) * 100, color: "var(--s-share)", label: "Share due" }, { pct: d.consDue / (d.receivables || 1) * 100, color: "var(--s-cons)", label: "Construction due" }] }), /* @__PURE__ */ React.createElement("div", { className: "legend", style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { style: { background: "var(--s-share)" } }), "Share due ", fmtMoney(d.shareDue)), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { style: { background: "var(--s-cons)" } }), "Construction due ", fmtMoney(d.consDue)))))), /* @__PURE__ */ React.createElement(Card, { title: "Payment collection trend", sub: "Last six months" }, !d.trend.some((t) => t.share || t.construction || t.expense) ? /* @__PURE__ */ React.createElement(Empty, { title: "No transactions yet", text: "The monthly trend appears after the first payment or expense.", icon: "chart" }) : /* @__PURE__ */ React.createElement(TrendChart, { data: d.trend, series: [{ key: "share", label: "Share collection", color: "var(--s-share)" }, { key: "construction", label: "Construction collection", color: "var(--s-cons)" }, { key: "expense", label: "Project expenses", color: "var(--s-out)", dash: "5 4" }] }))), /* @__PURE__ */ React.createElement("div", { className: "grid g2" }, /* @__PURE__ */ React.createElement(Card, { title: "Construction expense summary", sub: "Approved spending by category", actions: /* @__PURE__ */ React.createElement(Flow, { dir: "out" }) }, /* @__PURE__ */ React.createElement(HBars, { items: d.byCategory.slice(0, 8).map((x) => ({ label: x.label, value: x.value, color: "var(--s-out)" })), max: d.byCategory.length ? d.byCategory[0].value : 1, empty: "No approved expenses yet." })), /* @__PURE__ */ React.createElement(Card, { title: "Construction contributions outstanding", sub: "Largest amounts still to be received. Clients pay any amount, any time.", flush: true, actions: /* @__PURE__ */ React.createElement(Btn, { size: "sm", variant: "ghost", onClick: () => go("construction") }, "All contributions") }, /* @__PURE__ */ React.createElement(
       DataTable,
       {
         pageSize: 6,
@@ -5542,6 +5764,7 @@ function SalesPage(props) {
     const [q, setQ] = useState("");
     const [flt, setFlt] = useState("all");
     const [shSort, setShSort] = useState(null);
+    const [sel, setSel] = useState({});
     const all = useMemo(() => db.shareholders.filter(live).map((s) => {
       const c = Calc.shareholder(db, s);
       return { id: s.id, s, c, code: s.code, name: s.full_name, phone: s.phone, shares: c.shares, value: c.shareValue, paid: c.sharePaid, due: c.shareDue, cpaid: c.consPaid, cdue: c.consDue, status: s.status };
@@ -5551,6 +5774,7 @@ function SalesPage(props) {
       const t = q.trim().toLowerCase();
       return !t || (r.name + " " + r.code + " " + r.phone + " " + r.s.nid + " " + r.s.email).toLowerCase().indexOf(t) >= 0;
     });
+    const pickable = rows.filter((r) => !r.s._om), selIds = all.filter((r) => sel[r.id] && !r.s._om).map((r) => r.id), allPicked = pickable.length > 0 && pickable.every((r) => sel[r.id]);
     const w = can(user, "write");
     const addPay = (r) => {
       if (!r.c.bookings.length) {
@@ -5563,7 +5787,21 @@ function SalesPage(props) {
       if (a.ok) run(() => S.archiveShareholder(r.id, a.reason), "Shareholder archived");
     };
     const opts = ["all", "Active", "Inactive", "Due", "Fully Paid", "Has Unit", "No Unit"].map((k) => ({ id: k, label: k === "all" ? "All" : k, count: all.filter(tests[k]).length }));
+    const stop = (e) => e.stopPropagation();
     const cols = [
+      { key: "sel", noSort: true, label: /* @__PURE__ */ React.createElement("input", { type: "checkbox", id: "sh-pick-all", "aria-label": "Select all shown shareholders", checked: allPicked, disabled: !pickable.length, onChange: (e) => {
+        const n = Object.assign({}, sel);
+        pickable.forEach((r) => {
+          if (e.target.checked) n[r.id] = true;
+          else delete n[r.id];
+        });
+        setSel(n);
+      } }), render: (r) => /* @__PURE__ */ React.createElement("span", { onClick: stop, onKeyDown: stop }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", className: "sh-pick", "aria-label": "Select " + r.name, checked: !!sel[r.id] && !r.s._om, disabled: !!r.s._om, title: r.s._om ? "Only Me records are not printed" : void 0, onChange: (e) => {
+        const n = Object.assign({}, sel);
+        if (e.target.checked) n[r.id] = true;
+        else delete n[r.id];
+        setSel(n);
+      } })) },
       { key: "code", label: "ID", render: (r) => fu.shareholder[r.id] ? /* @__PURE__ */ React.createElement("span", { className: "mono fu-id" }, r.code, /* @__PURE__ */ React.createElement(FuPill, null)) : /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.code) },
       { key: "name", label: "Name", render: (r) => /* @__PURE__ */ React.createElement("div", { className: "cell-name" }, /* @__PURE__ */ React.createElement(ShAvatar, { sh: r.s }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, r.name), /* @__PURE__ */ React.createElement("span", null, r.s.profession))) },
       { key: "phone", label: "Phone", render: (r) => /* @__PURE__ */ React.createElement("span", { className: "num" }, r.phone) },
@@ -5585,7 +5823,7 @@ function SalesPage(props) {
         { label: "Archive", icon: "archive", danger: true, hidden: !can(user, "archiveShareholder"), onClick: () => archive(r) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Shareholders", sub: "Every person who holds land shares in the project, with land share and construction money kept apart.", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "shList", args: { ids: rows.map((r) => r.id), sort: shSort, flt, q: q.trim() } }) }, "Print List"), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder")) }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, onSort: setShSort, pageSize: 10, rowClass: (r) => fu.shareholder[r.id] ? "row-fu" : "", onRowClick: (r) => go("profile", { id: r.id }), empty: { title: q || flt !== "all" ? "No shareholders match" : "No shareholders yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add the first shareholder to get started.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder") : null } })));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Shareholders", sub: "Every person who holds land shares in the project, with land share and construction money kept apart.", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(React.Fragment, null, selIds.length > 0 && /* @__PURE__ */ React.createElement(Btn, { variant: "ghost", onClick: () => setSel({}) }, "Clear selection (" + selIds.length + ")"), /* @__PURE__ */ React.createElement(Btn, { icon: "printer", onClick: () => open("printPreview", { doc: "shList", args: selIds.length ? { ids: selIds, sort: shSort, flt: "all", q: "", sel: true } : { ids: rows.map((r) => r.id), sort: shSort, flt, q: q.trim() } }) }, selIds.length ? "Print selected (" + selIds.length + ")" : "Print List")), w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder")) }), /* @__PURE__ */ React.createElement(ShareholderKpis, { all }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search name, ID, phone, NID" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(DataTable, { cols, rows, onSort: setShSort, pageSize: 10, rowClass: (r) => fu.shareholder[r.id] ? "row-fu" : "", onRowClick: (r) => go("profile", { id: r.id }), empty: { title: q || flt !== "all" ? "No shareholders match" : "No shareholders yet", text: q || flt !== "all" ? "Clear the search or choose another filter." : "Add the first shareholder to get started.", icon: "users", action: w && !q && flt === "all" ? /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("shareholder", {}) }, "Add shareholder") : null } })));
   }
   function ProfilePage({ id, tab: tab0 }) {
     const { db, user, go, open } = useApp();
@@ -5777,7 +6015,7 @@ function SalesPage(props) {
         { label: S.archiveShareSale ? "Archive sale" : "Archive booking", icon: "archive", danger: true, hidden: !can(user, "archive"), onClick: () => archive(r) }
       ] })) }
     ];
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Share sales", sub: "Land share bookings and what has been collected against each. Construction money is not mixed in here.", flow: "in", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("booking", {}) }, "New share booking") }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: sold + " of " + settings.total_shares, sub: settings.total_shares - sold + " still available" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total booked value", value: fmtCompact(totals.value), title: fmtMoney(totals.value), sub: "After discounts" }), /* @__PURE__ */ React.createElement(Stat, { label: "Collected", tone: "in", value: fmtCompact(totals.paid), title: fmtMoney(totals.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Due", tone: totals.due > 4e-3 ? "due" : void 0, value: fmtCompact(totals.due), title: fmtMoney(totals.due), sub: "Not yet collected" })), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search booking, shareholder, reference" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(PageHead, { title: "Share sales", sub: "Land share bookings and what has been collected against each. Construction money is not mixed in here.", flow: "in", actions: w && /* @__PURE__ */ React.createElement(Btn, { variant: "primary", icon: "plus", onClick: () => open("booking", {}) }, "New share booking") }), /* @__PURE__ */ React.createElement("div", { className: "grid g-auto" }, /* @__PURE__ */ React.createElement(Stat, { label: "Shares sold", value: sold + " of " + settings.total_shares, sub: settings.total_shares - sold + " still available" }), /* @__PURE__ */ React.createElement(Stat, { label: "Total booked value", value: fmtCompact(totals.value), title: fmtMoney(totals.value), sub: "After discounts" }), /* @__PURE__ */ React.createElement(Stat, { label: "Collected", tone: "in", value: fmtCompact(totals.paid), title: fmtMoney(totals.paid), flow: "in" }), /* @__PURE__ */ React.createElement(Stat, { label: "Due", tone: totals.due > 4e-3 ? "due" : void 0, value: fmtCompact(totals.due), title: fmtMoney(totals.due), sub: "Not yet collected" })), /* @__PURE__ */ React.createElement(SalesKpis, { all, totals }), /* @__PURE__ */ React.createElement(Card, { flush: true }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement(SearchBox, { value: q, onChange: setQ, placeholder: "Search booking, shareholder, reference" }), /* @__PURE__ */ React.createElement(Chips, { options: opts, value: flt, onChange: setFlt })), /* @__PURE__ */ React.createElement(
       DataTable,
       {
         cols,
@@ -6403,8 +6641,12 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
   const RDUE = (v) => /* @__PURE__ */ React.createElement("span", { className: v > 4e-3 ? "m-due" : "m-b" }, fmtMoney(v));
   const INAMT = (rec) => rec && rec.kind === "payment" && rec.status === "Posted" ? GIN(rec.amount) : /* @__PURE__ */ React.createElement("span", { className: "m-b" }, fmtMoney(rec ? rec.amount : 0));
   const OPT_OFF = { showBooking: false, showShareholder: false };
-  const oo = (ctx) => ctx && ctx.opts || OPT_OFF;
-  const partyBox = (db, sh, label, o) => /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [[label || "Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], o && o.showShareholder || label === "Customer" ? [(label || "Shareholder") + " ID", sh.code] : null, ["Phone", sh.phone], ["NID", maskNid(sh.nid)], ["Address", sh.address], ["Email", sh.email]] });
+  const oo = (ctx) => {
+    const b = ctx && ctx.opts || OPT_OFF;
+    return ctx && ctx.user && (ctx.user.role === "Super Admin" || ctx.user.role === "Project Author") ? Object.assign({}, b, { fullNid: true }) : b;
+  };
+  const nidText = (o, n) => o && o.fullNid ? n ? String(n) : "—" : maskNid(n);
+  const partyBox = (db, sh, label, o) => /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [[label || "Shareholder", /* @__PURE__ */ React.createElement("b", null, sh.full_name)], o && o.showShareholder || label === "Customer" ? [(label || "Shareholder") + " ID", sh.code] : null, ["Phone", sh.phone], ["NID", nidText(o, sh.nid)], o && o.noAddress ? null : ["Address", sh.address], ["Email", sh.email]] });
   const LATEST_N = 8;
   const kvAddr = (v) => [v, "", true];
   function shModel(db, sh) {
@@ -6416,7 +6658,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
   const ttl = (n, t) => n ? n + ". " + t : t;
   function secProfile(ctx, sh, m, n) {
     const db = ctx.db, o = oo(ctx);
-    return /* @__PURE__ */ React.createElement(Sect, { title: ttl(n, "Profile") }, /* @__PURE__ */ React.createElement("div", { className: "p3-row" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.photo_doc_id), label: "Photo" }), /* @__PURE__ */ React.createElement("div", { className: "p3-main" }, /* @__PURE__ */ React.createElement("h2", { className: "prof-name" }, sh.full_name), /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [o.showShareholder ? ["Shareholder ID", sh.code] : null, ["Status", sh.status], ["Phone", sh.phone], ["Email", sh.email], ["NID", maskNid(sh.nid)], ["Registered", fmtDate(sh.registration_date)], ["Profession", [sh.profession, sh.designation].filter(Boolean).join(", ")], ["Address", sh.address, true]] })), /* @__PURE__ */ React.createElement("div", { className: "p3-ids" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.nid_front_doc_id), label: "NID front" }), /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.nid_back_doc_id), label: "NID back" }))), m.dcs.length > 0 && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Other documents on file: ", m.dcs.map((d) => d.doc_type + " (" + d.file_name + ")").join("; ")));
+    return /* @__PURE__ */ React.createElement(Sect, { title: ttl(n, "Profile") }, /* @__PURE__ */ React.createElement("div", { className: "p3-row" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.photo_doc_id), label: "Photo" }), /* @__PURE__ */ React.createElement("div", { className: "p3-main" }, /* @__PURE__ */ React.createElement("h2", { className: "prof-name" }, sh.full_name), /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [o.showShareholder ? ["Shareholder ID", sh.code] : null, ["Status", sh.status], ["Phone", sh.phone], ["Email", sh.email], ["NID", nidText(o, sh.nid)], ["Registered", fmtDate(sh.registration_date)], ["Profession", [sh.profession, sh.designation].filter(Boolean).join(", ")], ["Address", sh.address, true]] })), /* @__PURE__ */ React.createElement("div", { className: "p3-ids" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.nid_front_doc_id), label: "NID front" }), /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, sh.nid_back_doc_id), label: "NID back" }))), m.dcs.length > 0 && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Other documents on file: ", m.dcs.map((d) => d.doc_type + " (" + d.file_name + ")").join("; ")));
   }
   function secHoldings(ctx, sh, m, n) {
     const c = m.c, o = oo(ctx), pc = (a, b) => b ? fmtPct(Math.max(0, a / b * 100)) : "—";
@@ -6465,7 +6707,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
   }
   function secNominee(ctx, sh, m, n) {
     const db = ctx.db, nom = m.nom;
-    return /* @__PURE__ */ React.createElement(Sect, { title: ttl(n, "Nominee details") }, nom ? /* @__PURE__ */ React.createElement("div", { className: "p3-row" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.photo_doc_id), label: "Nominee photo" }), /* @__PURE__ */ React.createElement("div", { className: "p3-main" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Name", /* @__PURE__ */ React.createElement("b", null, nom.name), true], ["Relation", nom.relation], ["Phone", nom.phone], ["NID", maskNid(nom.nid)], ["Address", nom.address, true]] })), /* @__PURE__ */ React.createElement("div", { className: "p3-ids" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.nid_front_doc_id), label: "Nominee NID front" }), /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.nid_back_doc_id), label: "Nominee NID back" }))) : /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "No nominee recorded."));
+    return /* @__PURE__ */ React.createElement(Sect, { title: ttl(n, "Nominee details") }, nom ? /* @__PURE__ */ React.createElement("div", { className: "p3-row" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.photo_doc_id), label: "Nominee photo" }), /* @__PURE__ */ React.createElement("div", { className: "p3-main" }, /* @__PURE__ */ React.createElement(KV, { cols: 2, items: [["Name", /* @__PURE__ */ React.createElement("b", null, nom.name), true], ["Relation", nom.relation], ["Phone", nom.phone], ["NID", nidText(oo(ctx), nom.nid)], ["Address", nom.address, true]] })), /* @__PURE__ */ React.createElement("div", { className: "p3-ids" }, /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.nid_front_doc_id), label: "Nominee NID front" }), /* @__PURE__ */ React.createElement(DocImg, { doc: okDoc(db, nom.nid_back_doc_id), label: "Nominee NID back" }))) : /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "No nominee recorded."));
   }
   const SH_SECTIONS = { profile: ["Profile", secProfile], holdings: ["Holdings and finances", secHoldings], construction: ["Construction by unit", secConstruction], payments: ["Payment history", (c, s, m, n) => secPayments(c, s, m, n, true)], nominee: ["Nominee details", secNominee] };
   const DASH_SECTIONS = { overview: "Key figures", money: "Money in, money out and receivables", trend: "Collection trend (last six months)", expenses: "Construction expenses and contractor installments", receivables: "Construction contributions outstanding", payments: "Recent payments" };
@@ -6511,7 +6753,7 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
           run = roundMoney(run - p.amount);
           return { date: fmtDate(p.payment_date), rc: p.receipt_no, m: methodLabel(p), x: p.reference || "—", a: p.amount, bal: run, _p: p, _cls: p.status === "Reversed" ? "strike" : "" };
         });
-        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Share booking document", docNo: oo(ctx).showBooking ? b.code : void 0, date: b.booking_date }, /* @__PURE__ */ React.createElement(Sect, { title: "Shareholder" }, partyBox(db, sh, void 0, oo(ctx))), /* @__PURE__ */ React.createElement(Sect, { title: "Booking details" }, /* @__PURE__ */ React.createElement(KV, { cols: 3, items: [oo(ctx).showBooking ? ["Booking no.", b.code] : null, ["Booking date", fmtDate(b.booking_date)], ["Shares booked", b.quantity], ["Price per share", fmtMoney(b.unit_price)], ["Reference person", b.reference_person], ["Allocated unit(s)", units.map((u) => u.code).join(", ") || "Not assigned yet"]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Value" }, /* @__PURE__ */ React.createElement(Totals, { rows: [["Total value", fmtMoney(s.total)], ["Discount", "− " + fmtMoney(s.discount)], ["Grand total", fmtMoney(s.grand), true], ["Paid to date", GIN(s.paid)], ["Remaining due", RDUE(s.due), true]].map((r) => ({ 0: r[0], 1: r[1], big: r[2] })) }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Grand total in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(s.grand)))), /* @__PURE__ */ React.createElement(Sect, { title: "Payments received against this booking" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Date", k: "date" }, { l: "Receipt", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: (r) => INAMT(r._p) }, { l: "Due after", r: true, f: (r) => RDUE(r.bal) }], rows, foot: { 3: "Total paid", 4: GIN(s.paid), 5: RDUE(s.due) }, empty: "No payment recorded yet." })), b.remarks && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Remarks: ", b.remarks), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Shareholder", sh.full_name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Witness", "Name and signature"]] }));
+        return /* @__PURE__ */ React.createElement(DocFrame, { ctx, title: "Share booking document", docNo: oo(ctx).showBooking ? b.code : void 0, date: b.booking_date }, /* @__PURE__ */ React.createElement(Sect, { title: "Shareholder" }, partyBox(db, sh, void 0, Object.assign({}, oo(ctx), { noAddress: true }))), /* @__PURE__ */ React.createElement(Sect, { title: "Booking details" }, /* @__PURE__ */ React.createElement(KV, { cols: 3, items: [oo(ctx).showBooking ? ["Booking no.", b.code] : null, ["Booking date", fmtDate(b.booking_date)], ["Shares booked", b.quantity], ["Price per share", fmtMoney(b.unit_price)], ["Reference person", b.reference_person], ["Allocated unit(s)", units.map((u) => u.code).join(", ") || "Not assigned yet"]] })), /* @__PURE__ */ React.createElement(Sect, { title: "Value" }, /* @__PURE__ */ React.createElement(Totals, { rows: [["Total value", fmtMoney(s.total)], ["Discount", "− " + fmtMoney(s.discount)], ["Grand total", fmtMoney(s.grand), true], ["Paid to date", GIN(s.paid)], ["Remaining due", RDUE(s.due), true]].map((r) => ({ 0: r[0], 1: r[1], big: r[2] })) }), /* @__PURE__ */ React.createElement("div", { className: "words" }, /* @__PURE__ */ React.createElement("span", null, "Grand total in words"), /* @__PURE__ */ React.createElement("b", null, amountInWords(s.grand)))), /* @__PURE__ */ React.createElement(Sect, { title: "Payments received against this booking" }, /* @__PURE__ */ React.createElement(DT, { cols: [{ l: "Date", k: "date" }, { l: "Receipt", k: "rc" }, { l: "Method", k: "m" }, { l: "Reference", k: "x" }, { l: "Amount", r: true, f: (r) => INAMT(r._p) }, { l: "Due after", r: true, f: (r) => RDUE(r.bal) }], rows, foot: { 3: "Total paid", 4: GIN(s.paid), 5: RDUE(s.due) }, empty: "No payment recorded yet." })), b.remarks && /* @__PURE__ */ React.createElement("p", { className: "dnote" }, "Remarks: ", b.remarks), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Shareholder", sh.full_name], ["Authorised signatory", ctx.db.settings[0].company_name], ["Witness", "Name and signature"]] }));
       }
     },
     /* Construction contribution statement (one unit) */
@@ -6742,6 +6984,15 @@ function DocFrame({ title, docNo, date, ctx, children, landscape, note, cls }) {
     const [zoomMode, setZoomMode] = useState("fit");
     const landscape = def && def.landscape ? def.landscape(args || {}) : false, pw = landscape ? 1123 : 794;
     useEffect(() => {
+      const st = document.createElement("style");
+      st.id = "pv-page-orient";
+      st.textContent = "@page{size:A4 " + (landscape ? "landscape" : "portrait") + ";margin:0}";
+      document.head.appendChild(st);
+      return () => {
+        st.remove();
+      };
+    }, [landscape]);
+    useEffect(() => {
       MODAL_STACK.push(tok.current);
       const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
@@ -6839,7 +7090,9 @@ PRINT_DOCS.shList = {
       });
       rows = a.sort.dir < 0 ? out.reverse() : out;
     }
+    rows = rows.map((r, i) => Object.assign({}, r, { no: i + 1 }));
     const cols = [
+      { l: "No.", w: "9mm", f: (r) => r.no },
       o.showPhotos ? { l: "Photo", f: (r) => /* @__PURE__ */ React.createElement(PrintThumb, { db, sh: r.s }) } : null,
       o.showShareholder ? { l: "Shareholder ID", f: (r) => /* @__PURE__ */ React.createElement("span", { className: "mono" }, r.code) } : null,
       { l: "Name", f: (r) => /* @__PURE__ */ React.createElement("b", null, r.name) },
@@ -6852,9 +7105,9 @@ PRINT_DOCS.shList = {
       { l: "Construction due", r: true, f: (r) => RDUE(r.cdue) },
       { l: "Status", f: (r) => r.status }
     ];
-    const foot = rows.length ? { 4: sum(rows, (r) => r.shares), 5: fmtMoney(sum(rows, (r) => r.value)), 6: GIN(sum(rows, (r) => r.paid)), 7: RDUE(sum(rows, (r) => r.due)), 8: GIN(sum(rows, (r) => r.cpaid)), 9: RDUE(sum(rows, (r) => r.cdue)) } : null;
-    if (foot) foot[2] = "Total";
-    return /* @__PURE__ */ React.createElement(DocFrame, { ctx, landscape: true, title: "Shareholder list", docNo: "SL-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement("p", { className: "dnote" }, rows.length, " shareholder", rows.length === 1 ? "" : "s", a.flt && a.flt !== "all" ? " · Filter: " + a.flt : "", a.q ? " · Search: “" + a.q + "”" : "", ". Land share money and construction contribution money are kept apart. Figures are as of today."), /* @__PURE__ */ React.createElement(Sect, { title: "Shareholders" }, /* @__PURE__ */ React.createElement(DT, { cols, rows, foot, empty: "No shareholder matches the current filter and search." })), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name]] }));
+    const foot = rows.length ? { 5: sum(rows, (r) => r.shares), 6: fmtMoney(sum(rows, (r) => r.value)), 7: GIN(sum(rows, (r) => r.paid)), 8: RDUE(sum(rows, (r) => r.due)), 9: GIN(sum(rows, (r) => r.cpaid)), 10: RDUE(sum(rows, (r) => r.cdue)) } : null;
+    if (foot) foot[3] = "Total";
+    return /* @__PURE__ */ React.createElement(DocFrame, { ctx, landscape: true, title: "Shareholder list", docNo: "SL-" + TODAY.replace(/-/g, ""), date: TODAY }, /* @__PURE__ */ React.createElement("p", { className: "dnote" }, rows.length, " shareholder", rows.length === 1 ? "" : "s", a.sel ? " · Selected shareholders only" : "", !a.sel && a.flt && a.flt !== "all" ? " · Filter: " + a.flt : "", !a.sel && a.q ? " · Search: “" + a.q + "”" : "", ". Land share money and construction contribution money are kept apart. Figures are as of today."), /* @__PURE__ */ React.createElement(Sect, { title: "Shareholders" }, /* @__PURE__ */ React.createElement(DT, { cols, rows, foot, empty: "No shareholder matches the current filter and search." })), /* @__PURE__ */ React.createElement(Sigs, { labels: [["Prepared by", ctx.user.name], ["Authorised signatory", ctx.db.settings[0].company_name]] }));
   }
 };
 
@@ -7007,7 +7260,7 @@ PRINT_DOCS.shList = {
     { id: "payments", label: "Payments", icon: "card" },
     { id: "documents", label: "Documents", icon: "file" },
     { id: "reports", label: "Reports", icon: "chart" },
-    { id: "audit", label: "Audit Log", icon: "shield" },
+    { id: "audit", label: "Audit Log", icon: "clock" },
     { id: "settings", label: "Settings", icon: "sliders" }
   ];
   const PAGES = { integrity: IntegrityPage, project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, customers: CustomersPage, customer: CustomerPage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
@@ -7202,7 +7455,7 @@ PRINT_DOCS.shList = {
     if (!user) return /* @__PURE__ */ React.createElement(AuthScreen, null, /* @__PURE__ */ React.createElement("h1", null, "Profile not found"), /* @__PURE__ */ React.createElement("p", { className: "muted" }, "Your sign-in is valid but your profile was not in the loaded data. Sign out and try again, or contact the project owner."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => auth.signOut() }, "Sign out"));
     const st2 = db.settings[0], Page = (route.name === "audit" && !can(user, "seeRoles") ? DashboardPage : PAGES[route.name]) || DashboardPage, active = route.name === "audit" && !can(user, "seeRoles") ? "dashboard" : route.name === "profile" ? "shareholders" : route.name === "customer" ? "customers" : route.name;
     const bottom = [{ id: "dashboard", label: "Home", icon: "dashboard" }, { id: "shareholders", label: "People", icon: "users" }, { id: "sales", label: "Sales", icon: "tag" }, { id: "payments", label: "Payments", icon: "card" }];
-    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => (!n.prodOnly || auth) && (!n.omOnly || db.omCap && db.omView !== "pa") && (n.id !== "audit" || can(user, "seeRoles"))).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(OmViewBar, null), /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(OmBanner, null), /* @__PURE__ */ React.createElement(OmRoleWatch, null), /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
+    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { className: "brand-proj" }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => (!n.prodOnly || auth) && (!n.omOnly || db.omCap && db.omView !== "pa") && (n.id !== "audit" || can(user, "seeRoles"))).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement("span", { className: "nav-ic", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 19 })), /* @__PURE__ */ React.createElement("span", { className: "nav-t" }, n.label))))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(OmViewBar, null), /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(OmBanner, null), /* @__PURE__ */ React.createElement(OmRoleWatch, null), /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
       const C = MODAL_REGISTRY[m.name];
       return C ? /* @__PURE__ */ React.createElement(C, { key: m.id, ...m.props, onClose: () => setModals((x) => x.filter((y) => y.id !== m.id)) }) : null;
     }), conf && /* @__PURE__ */ React.createElement(ConfirmHost, { state: conf, onDone: (r) => {
