@@ -593,6 +593,65 @@ input[type=text],input[type=email],input[type=password],input[type=number],input
 .doc .dt th{color:#111827;background:#E9ECF1;border-bottom:1.5px solid #4B5563}.doc .dt td{border-bottom:1px solid #B8BEC8}
 .doc .dsec h3{color:#4C1D95;border-bottom-color:#9CA3AF}.doc .dnote{color:#374151}
 
+/* ===== C9.1: sidebar redesign, motion, avatars (all scoped; frontend only) ===== */
+.side{width:auto;padding:0;gap:0;background-color:#fff;background-image:linear-gradient(180deg,#fff 0%,#FBF9FE 100%);overflow:hidden}
+.shell{grid-template-columns:268px minmax(0,1fr)}
+.side .brand{padding:22px 20px 18px;margin:0;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#F8F3FD,#fff);display:flex;flex-direction:column;gap:2px}
+.side .brand-co{font-size:18px;font-weight:650;color:#4C1D95;margin-top:10px}
+.side .brand-sys{margin-top:3px;color:#7A7490;letter-spacing:.16em}
+.side .brand-proj{margin-top:12px;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid var(--line);font-weight:600;font-size:13px;color:#5B21B6;line-height:1.3}
+.side .nav{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 12px 10px;gap:3px;scrollbar-width:thin}
+.side .nav button{position:relative;gap:13px;padding:0 12px 0 10px;height:46px;min-height:46px;border-radius:11px;font-size:14.5px;font-weight:550;color:#3E3954;letter-spacing:.005em;transition:background .18s ease,color .18s ease,transform .18s ease;line-height:1.15}
+.side .nav button .nav-ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:#F3EFF9;color:#6B21A8;transition:background .18s ease,color .18s ease}
+.side .nav button .nav-ic svg{width:19px;height:19px}
+.side .nav button .nav-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.side .nav button:hover{background:#F6F1FC;color:#2D1B54}
+.side .nav button:hover .nav-ic{background:#EADFF8}
+.side .nav button[aria-current="page"]{background:linear-gradient(90deg,#F1E6FB,#F8F2FD);color:#4C1D95;font-weight:650;box-shadow:none}
+.side .nav button[aria-current="page"] .nav-ic{background:linear-gradient(135deg,#8B3FD0,#6B21A8);color:#fff;box-shadow:0 3px 8px rgba(107,33,168,.32)}
+.side .nav button[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:4px;border-radius:0 4px 4px 0;background:#6B21A8}
+.side .nav button:focus-visible{outline:2px solid #7C3AED;outline-offset:1px}
+.side .nav-sep{margin:8px 10px}
+.side .side-foot{margin:0;padding:12px 20px 16px;border-top:1px solid var(--line);background:#FBF9FE;font-size:11.5px;color:#6A6580;display:flex;align-items:center;gap:8px}
+.side .side-foot::before{content:"";width:8px;height:8px;border-radius:50%;background:#22A55A;flex:none}
+/* motion */
+@keyframes navIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes pgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes popIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes modIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes scrIn{from{opacity:0}to{opacity:1}}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes growY{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.side .nav>*{animation:navIn .38s cubic-bezier(.2,.7,.2,1) backwards}
+.side .nav>*:nth-child(1){animation-delay:30ms}.side .nav>*:nth-child(2){animation-delay:70ms}.side .nav>*:nth-child(3){animation-delay:110ms}.side .nav>*:nth-child(4){animation-delay:150ms}.side .nav>*:nth-child(5){animation-delay:190ms}.side .nav>*:nth-child(6){animation-delay:230ms}.side .nav>*:nth-child(7){animation-delay:270ms}.side .nav>*:nth-child(8){animation-delay:310ms}.side .nav>*:nth-child(9){animation-delay:350ms}.side .nav>*:nth-child(10){animation-delay:390ms}.side .nav>*:nth-child(n+11){animation-delay:430ms}
+.content>*:not(.dash){animation:pgIn .26s cubic-bezier(.2,.7,.2,1) backwards}
+.content>.dash{animation:pgIn .26s cubic-bezier(.2,.7,.2,1) backwards}
+.kpi{animation:pgIn .45s cubic-bezier(.2,.7,.2,1) backwards}
+.kpi-row>.kpi:nth-child(2){animation-delay:60ms}.kpi-row>.kpi:nth-child(3){animation-delay:120ms}.kpi-row>.kpi:nth-child(4){animation-delay:180ms}.kpi-row>.kpi:nth-child(5){animation-delay:240ms}.kpi-row>.kpi:nth-child(6){animation-delay:300ms}
+.inv-grid>.card{animation:pgIn .5s cubic-bezier(.2,.7,.2,1) backwards}
+.inv-grid>.card:nth-child(1){animation-delay:240ms}.inv-grid>.card:nth-child(2){animation-delay:300ms}.inv-grid>.card:nth-child(3){animation-delay:360ms}.inv-grid>.card:nth-child(4){animation-delay:420ms}.inv-grid>.card:nth-child(5){animation-delay:480ms}
+.cap-bar i,.pipe-bar i,.mtr-bar i,.sst-bar i,.top5-bar i{transform-origin:left center;animation:growX .85s cubic-bezier(.2,.7,.2,1) 350ms backwards}
+.cap-stack i{transform-origin:center bottom;animation:growY .8s cubic-bezier(.2,.7,.2,1) 420ms backwards}
+.pop,.pop-fixed{animation:popIn .16s ease-out;transform-origin:top right}
+.modal{animation:modIn .22s cubic-bezier(.2,.7,.2,1)}
+.scrim,.modal-bg,.modal-back{animation:scrIn .2s ease-out}
+.btn,.card{transition:border-color .15s ease,box-shadow .18s ease,background .15s ease}
+@media (prefers-reduced-motion:reduce){.side .nav>*,.content>*,.kpi,.inv-grid>.card,.cap-bar i,.pipe-bar i,.mtr-bar i,.sst-bar i,.top5-bar i,.cap-stack i,.pop,.pop-fixed,.modal,.scrim{animation:none!important}.side .nav button,.side{transition:none!important}}
+/* top shareholders avatar */
+.top5 li{grid-template-columns:26px 40px minmax(130px,220px) minmax(0,1fr) 130px}
+.top5-av{width:40px;height:40px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--primary-soft);box-shadow:0 0 0 2px #fff,0 0 0 3px #E4D8F3}
+.top5-av img{width:100%;height:100%;object-fit:cover;display:block}
+.top5-av .avatar{width:100%!important;height:100%!important;font-size:14px!important}
+.top5-bar{height:12px}
+.top5 li b{font-size:14px;color:#3B1670}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{width:min(300px,86vw)}
+  .top5 li{grid-template-columns:24px 36px minmax(0,1fr) 108px}.top5-av{width:36px;height:36px}
+}
+@media (max-width:420px){.top5 li{grid-template-columns:22px 34px minmax(0,1fr)}.top5 li b{grid-column:2/-1;text-align:left}}
+@media (max-width:900px){.top-r{flex-wrap:wrap;justify-content:flex-end;min-width:0;max-width:100%;gap:6px;margin-left:auto}}
+
 .revnote{margin-top:6px}.revpill{background:#FEF3C7;color:#92400E;font-size:10px;padding:1px 6px;border-radius:999px}.dnote.revnote{font-size:8pt;border-top:1px dashed #D1D5DB;padding-top:3px;margin-top:4px}
 </style>
 <div id="root"></div>
@@ -5543,9 +5602,29 @@ function SalesPage(props) {
     return /* @__PURE__ */ React.createElement("ul", { className: "tl" }, logs.map((a) => /* @__PURE__ */ React.createElement("li", { key: a.id }, /* @__PURE__ */ React.createElement("i", null), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("b", null, a.action), " ", /* @__PURE__ */ React.createElement("span", { className: "muted" }, "· ", a.entity_type.replace("_", " "))), /* @__PURE__ */ React.createElement("div", null, a.summary), a.reason && /* @__PURE__ */ React.createElement("div", { className: "muted" }, "Reason: ", a.reason), /* @__PURE__ */ React.createElement("div", { className: "muted", style: { fontSize: 12 } }, fmtDateTime(a.at), " · ", a.user_name, a.role ? " (" + a.role + ")" : "")))));
   }
   /* ---- Light dashboard blocks (read-only views of existing Calc results; no new calculations on the backend) ---- */
+  /* KPI value count-up: final text is always exactly the original string; skipped under reduced motion */
+  function CountText({ text }) {
+    const [shown, setShown] = useState(text);
+    useEffect(() => {
+      setShown(text);
+      if (reducedMotion()) return;
+      const m = String(text).match(/^(\D*?)(\d[\d,]*(?:\.\d+)?)(.*)$/);
+      if (!m) return;
+      const target = parseFloat(m[2].replace(/,/g, "")), dec = (m[2].split(".")[1] || "").length, comma = m[2].indexOf(",") >= 0;
+      if (!isFinite(target) || target === 0) return;
+      const fmt = (v) => { const s = v.toFixed(dec); return comma ? Number(s).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }) : s; };
+      let raf = 0, t0 = 0;
+      const step = (t) => { if (!t0) t0 = t; const k = Math.min(1, (t - t0) / 600), e = 1 - Math.pow(1 - k, 3); if (k < 1) { setShown(m[1] + fmt(target * e) + m[3]); raf = requestAnimationFrame(step); } else setShown(text); };
+      setShown(m[1] + fmt(0) + m[3]);
+      raf = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(raf);
+    }, [text]);
+    return shown;
+  }
+
   function Kpi({ label, value, sub, tone, title }) {
     const h = React.createElement;
-    return h("div", { className: "kpi kpi-" + (tone || "purple") }, h("span", { className: "kpi-l" }, label), h("b", { className: "kpi-v num", title: title || void 0 }, value), sub ? h("small", { className: "kpi-s" }, sub) : null);
+    return h("div", { className: "kpi kpi-" + (tone || "purple") }, h("span", { className: "kpi-l" }, label), h("b", { className: "kpi-v num", title: title || void 0 }, h(CountText, { text: value })), sub ? h("small", { className: "kpi-s" }, sub) : null);
   }
   function Meter({ label, pct, tone, note }) {
     const h = React.createElement, p = Math.max(0, Math.min(100, isFinite(pct) ? pct : 0));
@@ -5600,7 +5679,7 @@ function SalesPage(props) {
             h("div", { className: "sst-bar", role: "img", "aria-label": "Active bookings by payment status" }, m.act ? [["Paid", "green"], ["Partial", "blue"], ["Unpaid", "amber"]].map((x) => h("i", { key: x[0], className: "pc-" + x[1], style: { width: pct(m.cnt[x[0]], m.act) + "%" } })) : null),
             h("ul", { className: "sst-l" }, [["Paid", "green", m.cnt.Paid], ["Partly paid", "blue", m.cnt.Partial], ["Unpaid", "amber", m.cnt.Unpaid], ["Cancelled", "mute", m.canc]].map((x) => h("li", { key: x[0] }, h("i", { className: "pc-" + x[1] }), h("span", null, x[0]), h("b", { className: "num" }, x[2])))))),
         h(Card, { title: "Top shareholders by capital invested", sub: "Land share money received", className: "inv-wide" },
-          m.top.length ? h("ol", { className: "top5" }, m.top.map((x, i) => h("li", { key: x.s.id }, h("span", { className: "top5-n" }, i + 1), h("button", { type: "button", className: "link top5-nm", onClick: () => go("profile", { id: x.s.id }) }, x.s.full_name), h("div", { className: "top5-bar" }, h("i", { style: { width: pct(x.paid, topMax) + "%" } })), h("b", { className: "num" }, fmtMoney(x.paid))))) : h("p", { className: "muted" }, "No share payments recorded yet."))));
+          m.top.length ? h("ol", { className: "top5" }, m.top.map((x, i) => h("li", { key: x.s.id }, h("span", { className: "top5-n" }, i + 1), h("span", { className: "top5-av" }, h(ShAvatar, { sh: x.s, size: 40 })), h("button", { type: "button", className: "link top5-nm", onClick: () => go("profile", { id: x.s.id }) }, x.s.full_name), h("div", { className: "top5-bar" }, h("i", { style: { width: pct(x.paid, topMax) + "%" } })), h("b", { className: "num" }, fmtMoney(x.paid))))) : h("p", { className: "muted" }, "No share payments recorded yet."))));
   }
   function ShareholderKpis({ all }) {
     const act = all.filter((r) => r.s.status === "Active");
@@ -7181,7 +7260,7 @@ PRINT_DOCS.shList = {
     { id: "payments", label: "Payments", icon: "card" },
     { id: "documents", label: "Documents", icon: "file" },
     { id: "reports", label: "Reports", icon: "chart" },
-    { id: "audit", label: "Audit Log", icon: "shield" },
+    { id: "audit", label: "Audit Log", icon: "clock" },
     { id: "settings", label: "Settings", icon: "sliders" }
   ];
   const PAGES = { integrity: IntegrityPage, project: ProjectPage, dashboard: DashboardPage, shareholders: ShareholdersPage, profile: ProfilePage, customers: CustomersPage, customer: CustomerPage, sales: SalesPage, units: UnitsPage, construction: ConstructionPage, expenses: ExpensesPage, payments: PaymentsPage, documents: DocumentsPage, reports: ReportsPage, audit: AuditPage, settings: SettingsPage };
@@ -7376,7 +7455,7 @@ PRINT_DOCS.shList = {
     if (!user) return /* @__PURE__ */ React.createElement(AuthScreen, null, /* @__PURE__ */ React.createElement("h1", null, "Profile not found"), /* @__PURE__ */ React.createElement("p", { className: "muted" }, "Your sign-in is valid but your profile was not in the loaded data. Sign out and try again, or contact the project owner."), /* @__PURE__ */ React.createElement(Btn, { variant: "primary", onClick: () => auth.signOut() }, "Sign out"));
     const st2 = db.settings[0], Page = (route.name === "audit" && !can(user, "seeRoles") ? DashboardPage : PAGES[route.name]) || DashboardPage, active = route.name === "audit" && !can(user, "seeRoles") ? "dashboard" : route.name === "profile" ? "shareholders" : route.name === "customer" ? "customers" : route.name;
     const bottom = [{ id: "dashboard", label: "Home", icon: "dashboard" }, { id: "shareholders", label: "People", icon: "users" }, { id: "sales", label: "Sales", icon: "tag" }, { id: "payments", label: "Payments", icon: "card" }];
-    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, fontWeight: 600, color: "var(--primary-text)", lineHeight: 1.3 } }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => (!n.prodOnly || auth) && (!n.omOnly || db.omCap && db.omView !== "pa") && (n.id !== "audit" || can(user, "seeRoles"))).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 18 }), n.label)))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(OmViewBar, null), /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(OmBanner, null), /* @__PURE__ */ React.createElement(OmRoleWatch, null), /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
+    return /* @__PURE__ */ React.createElement(AppCtx.Provider, { value: ctx }, /* @__PURE__ */ React.createElement("div", { className: "shell" }, drawer && /* @__PURE__ */ React.createElement("div", { className: "scrim", onClick: () => setDrawer(false) }), /* @__PURE__ */ React.createElement("aside", { className: "side" + (drawer ? " open" : ""), "aria-label": "Main navigation" }, /* @__PURE__ */ React.createElement("div", { className: "brand" }, /* @__PURE__ */ React.createElement(BrandLogo, { height: 54, chip: true }), /* @__PURE__ */ React.createElement("div", { className: "brand-co" }, st2.company_name), /* @__PURE__ */ React.createElement("div", { className: "brand-sys" }, APP_CONFIG.systemName), /* @__PURE__ */ React.createElement("div", { className: "brand-proj" }, st2.project_name)), /* @__PURE__ */ React.createElement("nav", { className: "nav" }, NAV.filter((n) => (!n.prodOnly || auth) && (!n.omOnly || db.omCap && db.omView !== "pa") && (n.id !== "audit" || can(user, "seeRoles"))).map((n) => /* @__PURE__ */ React.createElement(Fragment, { key: n.id }, n.id === "audit" && /* @__PURE__ */ React.createElement("div", { className: "nav-sep" }), /* @__PURE__ */ React.createElement("button", { type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement("span", { className: "nav-ic", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 19 })), /* @__PURE__ */ React.createElement("span", { className: "nav-t" }, n.label))))), (!auth || can(user, "seeRoles")) && /* @__PURE__ */ React.createElement("div", { className: "side-foot" }, /* @__PURE__ */ React.createElement("div", null, "Storage · ", repo.kind))), /* @__PURE__ */ React.createElement("div", { className: "main" }, /* @__PURE__ */ React.createElement("header", { className: "top" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "icon-btn menu-btn", "aria-label": "Open menu", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu" })), /* @__PURE__ */ React.createElement("div", { className: "proj" }, /* @__PURE__ */ React.createElement("small", null, st2.company_name), /* @__PURE__ */ React.createElement("b", null, st2.project_name)), /* @__PURE__ */ React.createElement(GlobalSearch, null), /* @__PURE__ */ React.createElement("div", { className: "top-r" }, /* @__PURE__ */ React.createElement(OmViewBar, null), /* @__PURE__ */ React.createElement(NotificationsMenu, null), /* @__PURE__ */ React.createElement(UserMenu, null))), /* @__PURE__ */ React.createElement("main", { className: "content", id: "main" }, /* @__PURE__ */ React.createElement(OmBanner, null), /* @__PURE__ */ React.createElement(OmRoleWatch, null), /* @__PURE__ */ React.createElement(Boundary, { resetKey: route.name + route.nonce }, /* @__PURE__ */ React.createElement(Page, { key: route.name + route.nonce, ...route.params }))))), /* @__PURE__ */ React.createElement("nav", { className: "bottom-nav", "aria-label": "Quick navigation" }, bottom.map((n) => /* @__PURE__ */ React.createElement("button", { key: n.id, type: "button", "aria-current": active === n.id ? "page" : void 0, onClick: () => go(n.id) }, /* @__PURE__ */ React.createElement(Icon, { n: n.icon, size: 20 }), n.label)), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setDrawer(true) }, /* @__PURE__ */ React.createElement(Icon, { n: "menu", size: 20 }), "More")), modals.map((m) => {
       const C = MODAL_REGISTRY[m.name];
       return C ? /* @__PURE__ */ React.createElement(C, { key: m.id, ...m.props, onClose: () => setModals((x) => x.filter((y) => y.id !== m.id)) }) : null;
     }), conf && /* @__PURE__ */ React.createElement(ConfirmHost, { state: conf, onDone: (r) => {
